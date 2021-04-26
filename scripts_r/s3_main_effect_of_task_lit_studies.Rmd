@@ -1,7 +1,7 @@
 ---
-title: "BC test main effect of task"
+title: "Main effect of task for literature approaches"
 author: "Rachel Sjouwerman"
-date: "11 2 2021"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: html_document
 ---
 
@@ -42,6 +42,8 @@ save_fig <- 'no'
 ```
 
 # Introduction
+
+Note this is a dummy script, bc Sabrina actually calculated everything for the BLC approaches from the literature. These are just some quick and dirty analyses and plots from my end.
 
 Here, baseline correction approaches are compared in terms of CS discrimination effects. I read in a dataset that contains skin conductance data of the ROFL participants. I used matlab to extract all values (i.e., the parameters that differ between the baseline correction approaches) that are used as input for the baseline correction formula.
 
@@ -170,6 +172,8 @@ res_ttest_d[order(res_ttest_d$effsize),'approach_eff_order'] <-  1:nrow(res_ttes
 res_ttest_d <- merge(res_ttest_d, app_param)
 ```
 
+## Bayesian part
+
 Run Bayesian t-test on all 120 approaches. Extract effect size for specification curve. Note that the effect size in fact represent something similar as when plotting the BFs. Because the Bayesian t-test tests whether the effect size is different from 0.
 
 ```{r}
@@ -239,6 +243,9 @@ clrs <- c("#ffd700",
 "#9d02d7",
 "#0000ff",
 "#2c2c2c")
+
+# set colors
+#clrs <- colorspace::sequential_hcl(n = 10, palette = 'Plasma')
 
 ```
 
