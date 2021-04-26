@@ -1,7 +1,7 @@
 ---
 title: "Baseline corrections based on Literature"
 author: "Rachel Sjouwerman"
-date: "6 4 2021"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: html_document
 ---
 
@@ -41,7 +41,7 @@ dat$postCS_start_review <- factor(dat$postCS_start_review, levels = c('CS on','0
 dat$approach_review <- factor(dat$approach_review, levels = c(1:10))
 ```
 
-Peak at data:
+Inspect data:
 
 ```{r}
 head(dat)
@@ -54,24 +54,20 @@ str(dat)
 save_fig <- 'no'
 
 # set colors
-clrs <-  c("#0000ff",
-           "#ffd700",
-           "#f15619",
-           "#e09fb7",
-           "#3f0255")
-
 clrs <- colorspace::sequential_hcl(n = 10, palette = 'Plasma')
 
 # fill title legend
-fill_title <- 'pre-CS'
 fill_title <- 'approach'
 
 # set font size
-size_font <- 30 # for saving fig
-size_txt  <- 7
-size_font <- 12 # for html
-size_txt  <- 2
-
+if (save_fig == 'yes'){
+  fig_ind <- 1  # set fig number
+  size_font <- 30  # for saving fig
+  size_txt  <- 7
+} else {
+  size_font <- 12  # for html
+  size_txt  <- 2
+}
 ```
 
 Build flowchart that illustrates what different kind of parameters are used within the baseline correction literature and also how the values specified for these parameters differ across studies.
@@ -91,7 +87,7 @@ Four parameters were identified:
 
 names_stratum <- c("approach", "BLW", "PDW start","PDW end","CS duration","function")
 
-  p_flow_2 <- ggplot(dat, aes(axis1 = approach_review,
+  p_flow <- ggplot(dat, aes(axis1 = approach_review,
                               axis2 = preCS_review,
                               axis3 = postCS_start_review, 
                               axis4 = postCS_end_review,
@@ -105,12 +101,8 @@ names_stratum <- c("approach", "BLW", "PDW start","PDW end","CS duration","funct
   geom_text(stat = 'stratum', aes(label = after_stat(stratum)), size = size_txt) +
   # change names for ticks on x-axis
   scale_x_discrete(limits = names_stratum, expand = c(.1, .1)) +
-  
-  #   # add title to plot and change title of legend for the legend type used
-  # labs(title = "Flowchart of parameters in reviewed literature for BLC", fill = fill_title
-  # ) +
-  theme_minimal() +
   # set some layouts
+  theme_minimal() +
   theme(legend.title = element_text(),
         text = element_text(size=size_font),
         legend.position = 'none') +
@@ -122,10 +114,8 @@ names_stratum <- c("approach", "BLW", "PDW start","PDW end","CS duration","funct
 
 # should the figure be saved?
 if (save_fig == 'yes'){
-  tiff(here('figures/flowchart_BC_literature_2b.tiff'), units="in", width=16, height=12, res=300)
-   # jpeg(here('figures/flowchart_BC_literature.jpg'), units="in", width=16, height=12, res=300)
-    png(here('figures/flowchart_BC_literature_2c.png'), units="in", width=16, height=12, res=300)
-  plot(p_flow_2)
+    png(here(paste0('figures/fig_', fig_ind, '_flowchart_lit.png')), units="in", width=16, height=12, res=300)
+  plot(p_flow)
   dev.off()
 }
 ```
