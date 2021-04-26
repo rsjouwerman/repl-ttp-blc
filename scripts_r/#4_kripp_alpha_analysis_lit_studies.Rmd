@@ -1,0 +1,500 @@
+---
+title: "rank stability"
+author: "Rachel Sjouwerman"
+date: "28 1 2021"
+output: html_document
+---
+
+```{r setup, message = FALSE, warning = FALSE, echo = FALSE}
+
+
+library(dplyr)              # for easy data manipulation
+library(ggplot2)            # for plotting
+#library(glue)               # for gluing strings to data
+library(gridExtra)          # for arranging plots in upp triangle of matrix
+library(here)               # for file path
+library(irr)                # for computing reliability between approaches
+library(knitr)
+library(lme4)               # for (mixed) linear models
+#library(lmerTest)          # for obtaining sig of effects, detach(package:lmerTest, unload=TRUE)
+library(patchwork)          # for arranging and labeling plots
+library(tidyr)              # for swithing between long and wide format
+library(tidyverse)          # for matching string patterns
+```
+
+```{r chunk-options, include = FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,            # hide code
+  message = FALSE,         # hide messages
+  out.width = "80%",
+  fig.width = 6,
+  fig.asp = 0.618,         # golden ratio betweein height and width  
+  dpi = 300
+)
+
+```
+
+```{r Read in data}
+# read in Sabrina's data
+# file includes 12 approaches with scr data per trial (14 CS+, 14 CS-, 14 US)
+# data is not log transformed or range corrected
+#dat <- read.csv(here('data/raw_apps_long.csv'))
+load(here('data/dfcomplete.Rdata'))
+dat <- data.frame(dfcomplete)
+rm(dfcomplete)
+
+# clean dataframe
+dat <- dat[,c(1:3,7:8)]
+names(dat)[3] <- 'number_cs'
+
+# update the type of variables in data
+cols_to_factor <- c('id', 'cs', 'approach', 'number_cs')
+dat[,cols_to_factor] <- lapply(dat[,cols_to_factor], as.factor)
+
+# add log transformation for scr response
+dat <- dat %>% 
+  mutate(scr_log = log10(1 + scr))
+
+# add range correction within subject
+# note, each approach has its own max per subject
+# is it correct that range correction is applied for the acquisition phase only?
+dat <- dat %>%
+  group_by(id,approach) %>%
+  mutate(scr_max = max(scr_log, na.rm = T),           # just to double check max
+         scr_log_r = scr_log / max(scr_log, na.rm = T)) %>%
+  data.frame()
+
+# get backup of dat, should NA in scr be removed?
+dat_backup <- dat 
+
+# note the dfcomplete dataframe already excluded two participants (10, 81)
+n_subs <- dat %>%
+  pull(id) %>%
+  unique() %>%
+  length()
+```
+
+## Analyses
+
+### Intraclass correlation
+
+First, the strength of agreement -- in other words reliability -- between the various baseline corrections will be evaluated. The scale for skin conductance responding is continuous. Subjects and approaches are viewed as random effects. We want to see whether responses are consistent between BC methods, any systematic differences between approaches are irrelevant, we are not interested in absolute agreement.
+
+```{r Compute reliability estimates}
+#dat <- dat_backup
+
+save_fig <- 'no'
+x_lab <- expression(paste('Krippendorfs ',alpha))
+y_lab <- 'fear acquisition training trial'
+```
+
+### Reliability by Krippendorff
+
+Krippendorfs alpha from the irr package gives approximately the same values as the custom made Krippendorffs alpha from Zapf. They differ only on th 4th or 5th decimal place.
+
+```{r Estimate reliability by Krippendorff}
+Sys.time()
+# loop through dataframes that only contain one trial (ie.unique cs type and number)
+
+# use the function by Zapf to also extract confidence intervals, using bootstrapping
+source(here('scripts_r/Zapf_Krip_alpha_function.R'))
+
+# remove TTP approaches from dat: approach %in% 1:10
+# remove approach 10 for visualisation: approach %in% 1:9
+dat <- dat %>%
+  filter(approach %in% 1:10) %>%
+  droplevels()
+
+
+
+
+# split into different dataframes
+# 42 acquistition trials
+dat_split_per_trial <- dat %>%
+  select(id, approach, cs, number_cs, scr) %>% # changed this to scr instead of scr_log_r
+  group_split(cs,number_cs)
+
+# build dataframe for extracted data
+ka_df <- data.frame(trial = NA,
+                   # ka_rank = NA, 
+                    kaZ_rank = NA, 
+                    kaZ_rank_lc = NA,
+                    kaZ_rank_uc = NA)
+
+# loop through 42 trials (115 subjects * 12 methods = 1380 observations per df)
+for (ind in 1:42){
+  df <- dat_split_per_trial[[ind]] # trial 1, csm
+  
+  # # # dataframe for kripp.alpha function from irr package
+  # df_1 <- df %>% pivot_wider(names_from = c(id, cs, number_cs), values_from =
+  #                              scr_log_r, names_prefix = 'response_id') %>%
+  #   select(-approach) %>%
+  #   as.matrix()
+  # 
+  # ka_rank <- kripp.alpha(df_1, method = 'ordinal')
+  # 
+  
+  
+  # dataframe for kripp alpha function from Zapf et al 2016
+  df_2 <- df %>% pivot_wider(names_from = approach, values_from = scr, names_prefix = 'approach') %>% # changed this to scr instead of scr_log_r
+    select(-c(id,cs,number_cs)) %>%
+    as.matrix()
+  
+  # compute, note nboot is 10 statt 1000, sonst dauert das ewig!
+  k_zapf_rank <- k_alpha(df_2, scaling = 'ordinal', nboot = 1000)
+  
+  # 
+  # print(paste(df$cs[1], df$number_cs[1], sep = '_'))
+  ka_df[ind,'cs'  ] <-  df$cs[1]
+  ka_df[ind,'trial'  ] <-  paste(df$cs[1], df$number_cs[1], sep = '_')
+ # ka_df[ind,'ka_rank'] <-  ka_rank$value
+  ka_df[ind, 'kaZ_rank'] <- k_zapf_rank$est.alpha
+  ka_df[ind, 'kaZ_rank_lc'] <- k_zapf_rank$ci.boot.alpha[1]
+  ka_df[ind, 'kaZ_rank_uc'] <- k_zapf_rank$ci.boot.alpha[2]
+  
+}
+#print values , does the fucntion kable() work here?           
+kable(ka_df) 
+
+Sys.time()
+```
+
+```{r Plot Krippendorffs alpha}
+# update structure of ka_df
+ka_df$trial <- factor(ka_df$trial, levels = ka_df$trial)
+#ka_df$cs <- as.factor(ka_df$cs)
+
+#save(ka_df, file = here('data/ka_df_over_all_approaches.Rdata'))
+
+ka_df$stimType <- sub('_([^_]*)$','', ka_df$trial)
+
+# plot
+p_kA <- ggplot(ka_df, aes(x = kaZ_rank, y = trial, color = stimType)) +
+  geom_point(aes(x = kaZ_rank),size = 5) +
+  geom_errorbarh(aes(xmin = kaZ_rank_lc, xmax = kaZ_rank_uc), height = 0, size = 1.5) +
+  scale_color_manual(name = NULL, values = c('blue','red','black'), labels = c('CS -', 'CS +', 'US'), guide = guide_legend(reverse=TRUE)) +
+  xlim(0,1) +
+  xlab(x_lab) +
+  ylab(y_lab) +
+  scale_y_discrete(labels = c('CS_M_1' = '1','CS_M_14' = '14',
+                              'CS_P_1' = '1','CS_P_14' = '14',
+                              'US_1' = '1','US_14' = '14'), 
+                   breaks = c('CS_M_1','CS_M_14','CS_P_1','CS_P_14',
+                              'US_1','US_14')) +
+  theme_classic() +
+  theme(text = element_text(size=28)) 
+
+# save fig
+if (save_fig == 'yes'){
+tiff(here('figures/krippAlpha/kA_allBCapproaches.tiff'), units="in", width=16, height=12, res=300)
+plot(p_kA)
+dev.off()
+
+}
+
+```
+
+#### Pairwise (i.e, approach wise) comparisons of Krippendorfs alpha
+
+```{r Estimate reliability by Krippendorff}
+Sys.time()
+# loop through dataframes that only contain one trial (ie.unique cs type and number)
+
+# use the function by Zapf to also extract confidence intervals, using bootstrapping
+source(here('scripts_r/Zapf_Krip_alpha_function.R'))
+
+# split into different dataframes
+# 42 acquistition trials
+dat_split_per_trial <- dat %>%
+  select(id, approach, cs, number_cs, scr_log_r) %>%
+  group_split(cs,number_cs)
+
+# build dataframe for extracted data
+ka_df <- data.frame(trial = NA,
+                    stimType= NA,
+                    kaZ_rank = NA, 
+                    kaZ_rank_lc = NA,
+                    kaZ_rank_uc = NA,
+                    app_x = NA,
+                    app_y = NA)
+ka_df_all <- ka_df
+
+# loop through 42 trials (115 subjects * 12 methods = 1380 observations per df)
+for (ind in 1:42){
+  df <- dat_split_per_trial[[ind]] # trial 1, csm
+  
+  # select combinations
+  for(app_x in 1:9){
+  for(app_y in (app_x+1):10){
+   
+# select 2 approaches to compare
+    df_xy <- df %>%
+      filter(approach %in% c(app_x, app_y)) %>%
+      droplevels()
+
+  
+  # dataframe for kripp alpha function from Zapf et al 2016
+  df_2 <- df_xy %>% pivot_wider(names_from = approach, values_from = scr_log_r, names_prefix = 'approach') %>%
+    select(-c(id,cs,number_cs)) %>%
+    as.matrix()
+  
+  # compute, note nboot is 10 statt 1000, sonst dauert das ewig! For all 45 approach comparisons, I set nboot = 1 which does not make sense for calc a confidence interval off course, bc only 1 value is estimated
+  # for 45 (unique approach combinations) and 42 trial = 1890 estimations, this took approx 20 mins to run
+  k_zapf_rank <- k_alpha(df_2, scaling = 'ordinal', nboot = 10)
+  
+  # 
+  # print(paste(df$cs[1], df$number_cs[1], sep = '_'))
+  
+  ka_df[ind,'trial'  ] <-  paste(df$cs[1], df$number_cs[1], sep = '_')
+  ka_df[ind, 'stimType'] <- as.character(df$cs[1])
+  ka_df[ind, 'kaZ_rank'] <- k_zapf_rank$est.alpha
+  ka_df[ind, 'kaZ_rank_lc'] <- k_zapf_rank$ci.boot.alpha[1]
+  ka_df[ind, 'kaZ_rank_uc'] <- k_zapf_rank$ci.boot.alpha[2]
+  ka_df[ind, 'app_x'] <- app_x
+  ka_df[ind, 'app_y'] <- app_y
+  
+  #name_ka_df <- paste('ka_df',app_x,app_y,sep = '_')
+  #assign(name_ka_df, ka_df)
+  
+  # put in one large dataframe
+  ka_df_all <- rbind(ka_df_all,ka_df)
+
+  }
+  }
+}
+#print values , does the fucntion kable() work here?           
+#kable(ka_df) 
+
+Sys.time()
+```
+
+```{r}
+
+#save(ka_df_all, file = here('data/kA_pairwiseComp.Rdata'))
+
+
+```
+
+Now plot Kripp alpha for always two approaches separately for all stimulus types.
+
+```{r Plot Krippendorffs alpha}
+ka_backup <- ka_df_all
+ka_df_all$stimType <- as.factor(ka_df_all$stimType)
+ka_df_all$trial <- factor(ka_df_all$trial, levels = unique(ka_df_all$trial))
+
+
+#### try differnt arrangement
+ka_df_all$trial_nr <- factor(gsub('^.*_','',ka_df_all$trial), levels = 1:14)
+ka_per_comp <- ka_df_all %>% 
+  group_split(app_x, app_y) 
+
+for (ind in 1:45){
+ df_temp <- ka_per_comp[[ind]] %>%
+   data.frame()
+ # df_temp$stimType <- as.factor(df_temp$stimType)
+#  df_temp$trial <- factor(df_temp$trial, levels = df_temp$trial)
+  
+ plot_ind <- df_temp %>%
+   ggplot(aes(x = kaZ_rank, y = trial, color = stimType)) +
+   geom_point(aes(x = kaZ_rank)) +
+   geom_errorbarh(aes(xmin = kaZ_rank_lc, xmax = kaZ_rank_uc), height = 0.5) +
+   scale_color_manual(values = c('blue','red','black')) +
+   #xlim(0,1) +
+   scale_y_discrete(labels = c('CS_M_1' = '1','CS_M_14' = '14',
+                              'CS_P_1' = '1','CS_P_14' = '14',
+                              'US_1' = '1','US_14' = '14'), 
+                   breaks = c('CS_M_1','CS_M_14','CS_P_1','CS_P_14',
+                              'US_1','US_14')) +
+   scale_x_continuous(n.breaks = 3, limits = c(0,1)) +
+   ggtitle(paste0(df_temp$app_x[1], ' vs ', df_temp$app_y[1])) +
+   xlab(x_lab) +
+   theme_classic() +
+   theme(legend.position = "none",
+         text = element_text(size=16) ) +
+   theme(axis.title = element_blank())
+   # temporary without legend for matrix arrangement
+
+assign(paste('plot_ind',ind, sep = '_'), plot_ind)
+}
+
+# combine plots using a matrix
+plot_mat <- matrix(nrow = 10, ncol = 10, byrow = T)
+plot_ind <- upper.tri(plot_mat, diag = FALSE)
+plot_mat[plot_ind] <- c(1,2,10,3,11,18,4,12,19,25,5,13,20,26,31,6,14,21,27,32,36,7,15,22,28,33,37,40,8,16,23,29,34,38,41,43,9,17,24,30,35,39,42,44,45)
+#paste0('plot_ind_',1:45,collapse = ',')
+plot_list <- list(plot_ind_1,plot_ind_2,plot_ind_3,plot_ind_4,plot_ind_5,plot_ind_6,plot_ind_7,plot_ind_8,plot_ind_9,plot_ind_10,plot_ind_11,plot_ind_12,plot_ind_13,plot_ind_14,plot_ind_15,plot_ind_16,plot_ind_17,plot_ind_18,plot_ind_19,plot_ind_20,plot_ind_21,plot_ind_22,plot_ind_23,plot_ind_24,plot_ind_25,plot_ind_26,plot_ind_27,plot_ind_28,plot_ind_29,plot_ind_30,plot_ind_31,plot_ind_32,plot_ind_33,plot_ind_34,plot_ind_35,plot_ind_36,plot_ind_37,plot_ind_38,plot_ind_39,plot_ind_40,plot_ind_41,plot_ind_42,plot_ind_43,plot_ind_44,plot_ind_45)
+
+# fill matrix with plots
+plot_upp_tri <- grid.arrange(grobs = plot_list, layout_matrix = plot_mat) 
+
+# save plot
+if (save_fig == 'yes'){
+tiff(here('figures/krippAlpha/ka_approach_wise_comp_matrix.tiff'), units="in", width=24, height=24, res=450)
+plot(plot_upp_tri)
+dev.off()
+}
+```
+
+```{r}
+# try if i can combine both plots
+plot_list_2 <- c(plot_list, list(p_kA))
+plot_mat_2 <- matrix(nrow = 10, ncol = 10, data = 46)
+plot_mat_2 <- cbind(plot_mat_2,plot_mat)
+#plot_mat_2[6:10,1:5] <- 46
+plot_combined <- grid.arrange(grobs = plot_list_2, layout_matrix = plot_mat_2)
+
+p_kA + plot_upp_tri
+p0 / s_all + plot_layout(heights = c(1,3))
+# save plot
+if (save_fig == 'yes'){
+jpeg(here('figures/krippAlpha/ka_combined_v2.jpg'), units="in", width=12, height=12, res=300)
+plot(plot_combined)
+dev.off()
+}
+```
+
+### Effect of baseline correction criteria on response
+
+#### Do SCRs differ depending on selected pre-CS window, post-CS window or type of post-CS value (peak/mean)?
+
+SCR \~ preCS \* postCS \* meanMax \* stimulusType
+
+Are there any main effects of interactions. "SCR" refers to the values per stimulus type averaged over all acquisition trials, thus 3 values per subject per approach. If we want to look at this we could also include trial number in the equation.
+
+Next, we will evaluated whether the effect of CS discrimination is different when skin conductance is estimated with different methods the effect will be estimated within each method group and compared with respect to significance (y/n, BF magnitude) and effect size and credible interval.
+
+Sabrina used the criteria from 12 studies in the literature so far. Here the criteria are not systematically varied, and only include a subset of all possibilities. For, illustration, I'll conduct the analysis as far as possible with that subset of data.
+
+```{r}
+# add columns with criterium specifics to the approaches to long data
+head(dat)
+
+# pre CS time window
+dat[dat$approach %in% 1:3,'preCS'] <- 1
+dat[dat$approach %in% 4:8,'preCS'] <- 2
+dat[dat$approach %in% 9,'preCS'] <- 4
+dat[dat$approach %in% 10,'preCS'] <- 10
+dat[dat$approach %in% 11:12,'preCS'] <- 0
+
+# start post CS time window
+dat[dat$approach %in% c(3,7,8,10),'postCS_on'] <- 0
+dat[dat$approach %in% c(6),'postCS_on'] <- 0.5
+dat[dat$approach %in% c(1,5),'postCS_on'] <- 1
+dat[dat$approach %in% c(2,9),'postCS_on'] <- 2
+dat[dat$approach %in% c(4),'postCS_on'] <- 3
+dat[dat$approach %in% c(11,12),'postCS_on'] <- 0.9 # TTP, prob doesnt make sense
+
+# end post CS time window
+dat[dat$approach %in% c(6),'postCS_off'] <- 4.5
+dat[dat$approach %in% c(1,3),'postCS_off'] <- 5
+dat[dat$approach %in% c(4),'postCS_off'] <- 6
+dat[dat$approach %in% c(2,8),'postCS_off'] <- 7
+dat[dat$approach %in% c(5,9),'postCS_off'] <- 8
+dat[dat$approach %in% c(10),'postCS_off'] <- 10
+dat[dat$approach %in% c(7),'postCS_off'] <- 12
+dat[dat$approach %in% c(11,12),'postCS_off'] <- 4 # TTP, prob doesnt make sense
+
+# add variable approach type: BC vs TTP
+dat$approach_type <- 'BC'
+dat[dat$approach %in% 11:12,'approach_type'] <- 'TTP'
+dat$approach_type <- as.factor(dat$approach_type)
+```
+
+```{r}
+# now construct linear model
+lm_1 <- lmer(scr_log_r ~ preCS * postCS_on * postCS_off + (1 | id), dat)
+# using lmertest makes a huge difference here, changes significance, have to look into that what to use
+summary(lm_1)
+anova(lm_1)
+
+lm_2 <- lmer(scr_log_r ~ approach_type + (1| id),dat)
+
+# simple rm anova, check contrasts and type (2 or 3)
+aovRM <-  aov(scr_log_r ~preCS*postCS_on*postCS_off + Error(id), dat)
+summary(aovRM)
+
+aovRM_2 <-  aov(scr_log_r ~ approach + Error(id), dat)
+summary(aovRM_2)
+
+aovRM_3 <-  aov(scr_log_r ~ approach_type + Error(id), dat)
+summary(aovRM_3)
+```
+
+```{r}
+# try some plotting
+#library(emmeans)
+#emmeans(lm_1, list(pairwise ~ preCS ), adjust = "tukey")
+
+ggplot(dat, aes(x = preCS, y = scr_log_r, group = preCS)) +
+  geom_boxplot()
+
+ggplot(dat, aes(x = postCS_on, y = scr_log_r, group = postCS_on)) +
+  geom_boxplot()
+
+ggplot(dat, aes(x = postCS_off, y = scr_log_r, group = postCS_on)) +
+  geom_boxplot()
+
+ggplot(dat, aes(x = approach_type, y = scr_log_r)) +
+  geom_boxplot()
+
+ggplot(dat, aes(x = approach, y = scr_log_r)) +
+  geom_boxplot()
+
+# non log and range corrected data
+ggplot(dat, aes(x = preCS, y = scr, group = preCS)) +
+  geom_boxplot()
+
+ggplot(dat, aes(x = postCS_on, y = scr, group = postCS_on)) +
+  geom_boxplot()
+
+ggplot(dat, aes(x = postCS_off, y = scr, group = postCS_on)) +
+  geom_boxplot()
+
+ggplot(dat, aes(x = approach_type, y = scr)) +
+  geom_boxplot()
+
+ggplot(dat, aes(x = approach, y = scr)) +
+  geom_boxplot()
+
+
+# 
+ggplot(data.frame(dat[dat$id %in% 1:2 & dat$number_cs == 1,]), aes(x = approach, y = scr_log_r,color = cs)) +
+  geom_point() +
+  geom_line(aes(group = id))
+```
+
+#### Case example: potential pitfalls
+
+Here, the baseline correction criteria of one specific study are applied to our dataset. In the original publication the justification for the criteria applied in the baseline correction procedure were not explicitly mentioned to be referred to relate to the stimulus or design specifications in the respective experiment. Here, we adapt these criteria blindly to our study (with different design specifications) and show their effect on the main effect of CS discrimination during acquisition.
+
+#### Relationship with other measures of fear learning (ratings) and trait anxiety
+
+Does the correlation between CS discrimination in SCR and in ratings change depending on quantification method used? Do individuals that show the strongest correlation in one of these approaches, also show the strongest correlation with all other approaches.
+
+Repeat for CS discrimination in SCR and STAI-T values.
+
+## Discussion
+
+Future directions / next steps:
+
+-   Zero-responses might per definition be more prevalent during extinction training, therefore differences between baseline correction methods and TTP scoring might be differently reflected within that experimental phase.
+
+# Open questions and notes
+
+-   TTP scoring in EDA: the program jumps to the min or max within a selected region, therefore the scoring is not a 100% manual and thus might deviate from completely manual TTP scoring approaches.
+
+-   16 baseline corrections are preregistered, but only 10 BC + 2 TTP are included here. Were the other 4 duplicates?
+
+-   Sabrina computed reliability estimates on the non log and range transformed data. Why not keeping this consistent with other analyses and also apply to log and range corrected data?
+
+-   What is the reason for using Cronbach's alpha and Krippendorf, instead of ICC for example?
+
+    -   Note that Cronbach's alpha can only be computed for 2 "raters" (i.e., approaches) max.
+
+-   Note that for our reliability analysis we have 115 \* 42 = 4830 single observations ("subjects") to compare between approaches. Do we need to account for dependency of subject? In other words, trials are within subject.
+
+-   Sabrina mentioned she ranked the responses before calculated reliability estimates. But this is done automatically in the reliability functions, correct? Because I don't find this ranking in the provided script. Just to double check.
+
+    -   Is the ranking done within participant and approach. Or is it done over all participants, over all approaches? This could make a difference, right?
+
+    -   Should we deal with NAs in a certain manner? NAs might result in exactly the same value, whereas actual responses might vary more. The ranking should, however, solve this problem.

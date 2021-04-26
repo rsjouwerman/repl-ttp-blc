@@ -1,0 +1,137 @@
+---
+title: "Baseline corrections based on Literature"
+author: "Rachel Sjouwerman"
+date: "6 4 2021"
+output: html_document
+---
+
+```{r chunk-options, include = FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,            # hide code
+  message = FALSE,         # hide messages
+  out.width = "80%",
+  fig.width = 6,
+  fig.asp = 0.618,         # golden ratio betweein height and width  
+  dpi = 300
+)
+
+```
+
+## Literature search
+
+```{r}
+# load libraries
+library(ggalluvial)         # for flowchart diagram
+library(ggplot2)            # for plotting
+library(here)               # for easy path specification
+```
+
+```{r}
+# read in data
+dat <- read.csv(here('files/approach_specifications_extended_factors_2021_04_20.csv'), sep = ';')
+
+# re-order some factor levels
+dat$preCS_review <- factor(dat$preCS_review, levels = c('1 s', '2 s', '4 s', '10 s'))
+dat$postCS_end_review <- factor(dat$postCS_end_review, levels = c('4.5 s', '5.0 s', '6.0 s', 'CS off', '7.0 s', '8.0 s','CS off + 8.0 s'))
+
+dat$CS_duration <- factor(dat$CS_duration, levels = c('1 s', '4 s', '5 s', '6 s','7 s', '8 s', '10s', '12s'))
+
+dat$postCS_start_review <- factor(dat$postCS_start_review, levels = c('CS on','0.0 s','0.5 s','1.0 s','2.0 s','CS off + 1.0 s', '3.0 s'))
+
+dat$approach_review <- factor(dat$approach_review, levels = c(1:10))
+```
+
+Peak at data:
+
+```{r}
+head(dat)
+str(dat)
+```
+
+```{r}
+# set specifics 
+# save figure
+save_fig <- 'no'
+
+# set colors
+clrs <-  c("#0000ff",
+           "#ffd700",
+           "#f15619",
+           "#e09fb7",
+           "#3f0255")
+
+clrs <- colorspace::sequential_hcl(n = 10, palette = 'Plasma')
+
+# fill title legend
+fill_title <- 'pre-CS'
+fill_title <- 'approach'
+
+# set font size
+size_font <- 30 # for saving fig
+size_txt  <- 7
+size_font <- 12 # for html
+size_txt  <- 2
+
+```
+
+Build flowchart that illustrates what different kind of parameters are used within the baseline correction literature and also how the values specified for these parameters differ across studies.
+
+Four parameters were identified:
+
+-   pre-CS baseline (variable: preCS_review); time window prior to stimulus onset, the mean of the signal within this window is calculated
+
+-   post-CS window start time (variable: postCS_start_review); time after stimulus onset
+
+-   post-CS window end time (variable: postCS_end_review); time after stimulus onset
+
+-   aggregate function applied over signal in post-CS window (variable: max_mean); either maximum value is selected, or mean value is computed
+
+```{r}
+# define the marks/ticks along which the flows should pass with axisX
+
+names_stratum <- c("approach", "BLW", "PDW start","PDW end","CS duration","function")
+
+  p_flow_2 <- ggplot(dat, aes(axis1 = approach_review,
+                              axis2 = preCS_review,
+                              axis3 = postCS_start_review, 
+                              axis4 = postCS_end_review,
+                              axis5 = CS_duration,
+                              axis6 = max_mean)) +
+  # plot flow
+  geom_alluvium(aes(fill = approach_review), color = 'lightgrey') + # was colored by preCS_review
+  # plot the stratums, i.e., bars through which the flow passes
+  geom_stratum() +
+  # add a label on these stratums
+  geom_text(stat = 'stratum', aes(label = after_stat(stratum)), size = size_txt) +
+  # change names for ticks on x-axis
+  scale_x_discrete(limits = names_stratum, expand = c(.1, .1)) +
+  
+  #   # add title to plot and change title of legend for the legend type used
+  # labs(title = "Flowchart of parameters in reviewed literature for BLC", fill = fill_title
+  # ) +
+  theme_minimal() +
+  # set some layouts
+  theme(legend.title = element_text(),
+        text = element_text(size=size_font),
+        legend.position = 'none') +
+    
+  # add y-axis title
+  ylab('number of studies') +
+  # change the colors of the flow
+  scale_fill_manual(values = clrs)
+
+# should the figure be saved?
+if (save_fig == 'yes'){
+  tiff(here('figures/flowchart_BC_literature_2b.tiff'), units="in", width=16, height=12, res=300)
+   # jpeg(here('figures/flowchart_BC_literature.jpg'), units="in", width=16, height=12, res=300)
+    png(here('figures/flowchart_BC_literature_2c.png'), units="in", width=16, height=12, res=300)
+  plot(p_flow_2)
+  dev.off()
+}
+```
+
+Voila, the flowchart:
+
+```{r}
+p_flow
+```

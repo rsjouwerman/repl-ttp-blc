@@ -1,0 +1,46 @@
+---
+title: "Sample descriptives"
+author: "Rachel Sjouwerman"
+date: "6 4 2021"
+output: html_document
+---
+
+```{r chunk-options, include = FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,            # hide code
+  message = FALSE,         # hide messages
+  out.width = "80%",
+  fig.width = 6,
+  fig.asp = 0.618,         # golden ratio betweein height and width  
+  dpi = 300
+)
+
+```
+
+```{r load-libraries, include=FALSE}
+library(dplyr)          # for easy data manipulation
+library(here)           # for easy path allocation
+```
+
+```{r load-data}
+load(here('data/dataSCR_maren.Rdata'))
+```
+
+```{r exclude-pp select vars}
+dat <- dataSCR %>% filter(!id %in% c(10,81)) %>%
+  select(id, gender, age) 
+
+dat$id <- as.factor(dat$id)
+
+# reduce to one row per id
+dat <- dat %>% group_by(id) %>%
+  summarise(age = age[1],
+            gender = gender[1])
+```
+
+```{r demographics}
+dat %>% summarise(m_age = mean(age, na.rm = T),
+                  sd_age = sd(age, na.rm = T))
+  
+dat %>% group_by(gender) %>% count()
+```

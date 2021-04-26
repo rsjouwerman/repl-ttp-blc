@@ -1,0 +1,580 @@
+---
+title: 'SCR quantification method comparison: Baseline corrections'
+author: "Rachel Sjouwerman"
+date: "14 1 2021"
+output: html_document
+---
+
+```{r setup, message = FALSE, warning = FALSE, echo = FALSE}
+
+
+library(dplyr)              # for easy data manipulation
+library(ggplot2)            # for plotting
+#library(glue)               # for gluing strings to data
+library(here)               # for file path
+library(irr)                # for computing reliability between approaches
+library(knitr)
+library(lme4)               # for (mixed) linear models
+#library(lmerTest)          # for obtaining sig of effects, detach(package:lmerTest, unload=TRUE)
+library(patchwork)          # for arranging and labeling plots
+#library(plyr)               # for changing factor levels --> calling this directly
+library(sjPlot)             # for putting output mix model in table
+library(tidyr)              # for swithing between long and wide format
+library(viridis)            # for plotting, colors
+```
+
+```{r chunk-options, include = FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,            # hide code
+  message = FALSE,         # hide messages
+  out.width = "80%",
+  fig.width = 6,
+  fig.asp = 0.618,         # golden ratio betweein height and width  
+  dpi = 300
+)
+
+```
+
+# Introduction
+
+Here, the effect of the parameters that differ between baseline correction approaches are compared. To start, I will read in a dummy dataset that contains skin conductance data of the first 5 participants. I used matlab to extract all values (i.e., the parameters that differ between the baseline correction approaches) that are used as input for the baseline correction formula.
+
+The matlab script used to create this data set is named: data/baselineScriptROFL_rachel_temp.m
+
+Description of the variables in this dataset can be found in: \_\_\_\_R_codebook\_\_\_\_\_\_\_
+
+# Analysis
+
+## Prepare data
+
+```{r}
+save_fig <- 'no'
+```
+
+```{r Read in data}
+# read in data with parameters for baseline corrections
+# file includes X approaches with scr data per trial (14 CS+, 14 CS-, 14 US)
+# possibly i still have habituation trials in here. Pls check.
+# data is not log transformed or range corrected
+dat <- read.csv(here::here('data/baseline_corrected_multiverse_all_subjects.csv'), header = FALSE)
+
+# the matlab file does not have column names
+names_cols <- c('id','postCS_start','postCS_end','preCS','max1mean0',	'trial', 'stimulus_type','scr','preCS_val','postCSmean','post_max','onset_postCSmax')
+names(dat) <- names_cols
+# change nubmers to more indicative labels
+#dat[,'stimType'] <- 'csm'
+dat[dat$stimulus_type == -1,'stimType'] <- 'csm'
+dat[dat$stimulus_type == 1,'stimType'] <- 'csp'
+dat[dat$stimulus_type == 999,'stimType'] <- 'us'
+
+# remove column that indicates stimulus type with an unintuitve number
+dat <- dat[,-7]
+
+# remove approaches with BW 3s
+dat <- dat %>% 
+  filter(preCS != 3000) %>%
+  droplevels()
+
+# change trial, remove habituation
+dat[dat$stimType == 'us','trial'] <- dat[dat$stimType == 'us','trial'] + 7
+dat <- dat[dat$trial %in% 8:21,]
+dat$trial <- dat$trial - 7
+
+# change levels of max1mean0
+dat[dat$max1mean0 == 1, 'max1mean0'] <- 'max'
+dat[dat$max1mean0 == 0, 'max1mean0'] <- 'mean'
+
+# update the type of variables in data
+cols_to_factor <- c('id','postCS_start','postCS_end','preCS','max1mean0', 'trial', 'stimType')
+dat[,cols_to_factor] <- lapply(dat[,cols_to_factor], as.factor)
+
+# add approach variable
+dat <- dat %>%
+  mutate(approach = factor(paste(preCS,postCS_start, postCS_end,max1mean0, sep ='_')))
+
+# make csp first factor level
+dat$stimType <- relevel(dat$stimType, 'csp')
+# get backup of dat
+dat_backup <- dat 
+
+# exclude subjects 
+# VPN 10: Claudia's Mann
+# VPN 81: CTQ+ cutoff ueberschritten
+dat <- dat %>% filter(!id %in% c(10,81))
+
+# number of subjects in data
+n_subs <- dat %>%
+  pull(id) %>%
+  unique() %>%
+  length()
+```
+
+```{r Read in TTP data}
+load(here::here('data/TTP2_Claudi_SCR118_PostProcess.Rdata'))
+dat_TTP <- claudi
+rm(claudi)
+
+# prepare TTP data
+head(dat_TTP)
+dat_TTP$id <- gsub('B07HH0*','',dat_TTP$id)
+dat_TTP <- dat_TTP[c(1:3,5,8)]
+names(dat_TTP) <- c('id','stimType','trial','scr','scr_log_rc')
+
+# change names of factor levels for stimType
+dat_TTP$stimType <- plyr::revalue(dat_TTP$stimType, c(CSM = 'csm', CSP = 'csp', US = 'us'))
+
+#detach(package:plyr, unload = T)
+
+# change to factor
+cols_to_factor <- c('id', 'trial', 'stimType')
+dat_TTP[,cols_to_factor] <- lapply(dat_TTP[,cols_to_factor], as.factor)
+
+# make csp first factor level
+dat_TTP$stimType <- relevel(dat_TTP$stimType, 'csp')
+```
+
+Some quick and dirty data visualization of the means of all baseline corrections/separate per baseline correction approach .
+
+```{r}
+# dat_mean <- dat %>%
+#   group_by(stimType, trial) %>%
+#   summarise(mean_scr = mean(scr, na.rm =T)) %>%
+#   data.frame()
+# 
+# ggplot(dat_mean, aes(x = as.numeric(trial), y = mean_scr, linetype = stimType)) + 
+#   geom_point() +
+#   geom_line() 
+# 
+# dat_mean <- dat %>%
+#   group_by(stimType, trial, approach) %>%
+#   summarise(mean_scr = mean(scr, na.rm =T)) %>%
+#   data.frame()
+# 
+# plot_app <- ggplot(dat_mean, aes(x = as.numeric(trial), y = mean_scr, color = approach, linetype = stimType)) + 
+#   geom_point() +
+#   geom_line() +
+#   theme(legend.position = 'none')
+# 
+# plot_app
+
+
+```
+
+## Pre CS value \> Post CS value?
+
+```{r}
+# set colors
+clrs <- c('red','blue','black')
+#clrs <- c('red','blue','yellow')
+y_lim <- c(0,5000)
+x_lim <- c(-.85,0.01)
+tit_max_panel <- 'PDW max'
+tit_mean_panel <- 'PDW mean'
+x_lab <- 'SCR < 0 based on BLC'
+```
+
+```{r}
+
+# first split for mean or max, and select only negative values
+df_max <- dat %>%
+  filter(max1mean0 == 'max') %>%
+  filter(preCS_val > post_max)
+
+# how many subjects have at least one negative scr?
+perc_subs_neg <- df_max %>% pull(id) %>%
+  unique() %>%
+  length() / n_subs * 100
+
+# number of observations, this should be n subjects x 42 trials x n approaches
+# i.e, 118 subjects x 42 trials x 100 max approaches (1/2 of all approaches)
+# this is equal for maximum or mean values
+n_obs_all <- dat %>%
+  filter(max1mean0 == 'max') %>%
+  nrow()
+
+n_obs_max <- df_max %>%
+  nrow()
+
+# comp percentage under zero
+n_und_zero <- round((n_obs_max / n_obs_all) * 100,1)
+
+# hoe many of the negative responses, are..
+n_csm <- df_max %>%
+  filter(stimType == 'csm') %>%
+  nrow() / n_obs_max * 100 %>%
+  round(digits = 1)
+
+n_csp <- df_max %>%
+  filter(stimType == 'csp') %>%
+  nrow() / n_obs_max * 100
+
+n_us <- df_max %>%
+  filter(stimType == 'us') %>%
+  nrow() / n_obs_max * 100
+
+# get descriptive counts from summary table
+tit_table <- 'Number of observations per id, the four parameters and stimulus type'
+df_max %>% 
+  select(id, preCS, postCS_start, postCS_end, max1mean0, stimType) %>%
+  summary() %>%
+  kable(caption = tit_table)
+
+
+df_max$stimType <- relevel(df_max$stimType, 'csm')
+
+# make histogram
+hist_max <- ggplot(df_max, aes(x = scr, fill = stimType)) +
+  geom_histogram(binwidth = 1/500, alpha = .5, position = 'identity') +
+  scale_fill_manual(values = clrs, breaks = c('csp','csm','us'), labels = c('CS +','CS -','US')) +
+
+  xlab(x_lab) +
+  ylim(y_lim) +
+  xlim(x_lim) +
+  ggtitle(tit_max_panel) +
+     theme(text = element_text(size = 12),
+         legend.title = element_blank(),
+         plot.title = element_text(hjust = 0.5)) +
+  # add percentages text
+  annotate('text',label = paste(n_und_zero,'%','< 0',sep = ' '),x = x_lim[1]*.8, y = y_lim[2]) +
+  annotate('text',label = paste(round(n_csm,1),'%','CS-',sep = ' '),x = x_lim[1]*.8, y = y_lim[2]*.8, color = 'blue') +
+    annotate('text',label = paste(round(n_csp,1),'%','CS+',sep = ' '),x = x_lim[1]*.8, y = y_lim[2]*.7, color = 'red') +
+    annotate('text',label = paste(' ',round(n_us,1),' %','US ',sep = ' '),x = x_lim[1]*.8, y = y_lim[2]*.6, color = 'black') 
+
+```
+
+```{r}
+# for mean values
+# first split for mean or max
+df_mean <- dat %>%
+  filter(max1mean0 == 'mean') %>%
+  filter(preCS_val > postCSmean)
+
+# how many subjects have at least one negative scr?
+perc_subs_neg <- df_mean %>% pull(id) %>%
+  unique() %>%
+  length() / n_subs * 100
+
+# number of observations, this should be 5 subjects x 42 trials x 60 approaches
+# this is equal for maximum or mean values
+n_obs_all <- dat %>%
+  filter(max1mean0 == 'mean') %>%
+  nrow()
+
+n_obs_mean <- df_mean %>%
+  nrow()
+
+n_und_zero <- round((n_obs_mean / n_obs_all) * 100, 1)
+
+n_csm <- df_mean %>%
+  filter(stimType == 'csm') %>%
+  nrow() / n_obs_mean * 100
+
+n_csp <- df_mean %>%
+  filter(stimType == 'csp') %>%
+  nrow() / n_obs_mean * 100
+
+n_us <- df_mean %>%
+  filter(stimType == 'us') %>%
+  nrow() / n_obs_mean * 100
+
+# get descriptive counts from summary table
+tit_table <- 'Number of observations per id, the four parameters and stimulus type'
+df_mean %>% 
+  select(id, preCS, postCS_start, postCS_end, max1mean0, stimType) %>%
+  summary() %>%
+  kable(caption = tit_table)
+
+df_mean$stimType <- relevel(df_mean$stimType, 'csm')
+
+hist_mean <- ggplot(df_mean, aes(x = scr, fill = stimType)) +
+  geom_histogram(binwidth = 1/500, alpha = .5, position = 'identity') +
+  scale_fill_manual(values = clrs, breaks = c('csp','csm','us'), labels = c('CS +','CS -','US')) +
+
+  xlab(x_lab) +
+  ylim(y_lim) +
+ xlim(x_lim) +
+    ggtitle(tit_mean_panel) +
+    theme(text = element_text(size = 12),
+        legend.title = element_blank(),
+        plot.title = element_text(hjust = 0.5)) +
+    
+# add text with percentages
+      annotate('text',label = paste(n_und_zero,'%','< 0',sep = ' '),x = x_lim[1]*.8, y = y_lim[2]) +
+  annotate('text',label = paste(round(n_csm,1),'%','CS-',sep = ' '),x = x_lim[1]*.8, y = y_lim[2]*.8, color = 'blue') +
+    annotate('text',label = paste(round(n_csp,1),'%','CS+',sep = ' '),x = x_lim[1]*.8, y = y_lim[2]*.7, color = 'red') +
+    annotate('text',label = paste(' ',round(n_us,1),'%','US ',sep = ' '),x = x_lim[1]*.8, y = y_lim[2]*.6, color = 'black') 
+
+
+```
+
+```{r plot histograms}
+hist_max + hist_mean + plot_layout(guides = 'collect') + plot_annotation(tag_levels = 'A')
+
+if(save_fig == 'yes'){
+  tiff(here('figures/correction_problems/hist_below_zero.tiff'), units="in", width=8, height=6, res=300)
+plot(hist_max + hist_mean + plot_layout(guides = 'collect') + plot_annotation(tag_levels = 'A'))
+dev.off()
+}
+```
+
+```{r}
+# for all
+df_negSCR <- dat %>% 
+  filter(scr < 0)
+dim(df_negSCR)
+
+#summary(df_negSCR)
+
+
+```
+
+The value selected in the pre CS time window value (i.e. baseline) occurs to be larger than the value in the postCS time window (here maximum response) quite often. It also happens for all participants. But interestingly it happens only for the CS+ and CS-, not for the US. And also note, that it occurs almost twice as often for CS- as for CS+.
+
+It needs to be checked whether and how this corresponds to TTP scoring and particular the zero responses.
+
+Let's first look at the distribution of the actual BC values, then calculated in these cases:
+
+```{r}
+# make histogram for all negative SCRs splitted by categorized approaches
+ggplot(df_negSCR, aes(x = scr, fill = stimType)) +
+  geom_histogram(binwidth = 1/1000, alpha = .5) +
+  facet_wrap(.~  max1mean0 )
+
+df_negSCR %>%
+  filter(max1mean0 == 1) %>%
+  ggplot(aes(x = scr, fill = stimType)) +
+  geom_histogram(binwidth = 1/1000, alpha = .75) +
+  facet_wrap( . ~ preCS )
+
+# plot_hist <- ggplot(df, aes(x = scr, fill = stimType)) +
+#  geom_histogram(binwidth = 1/1000, alpha = .5)
+
+```
+
+Bleibt das verhätlnis gleich zwischen CS- und CS+? Wichtig wenn man negativ auf 0 setzen würde.
+
+Wenn auf 0 setzen, ist vermutlich diskriminierung reduziert, weil mehr CS- negativ sind als CS+.
+
+Diskriminiertung cs+ cs- berechnen für diese Fälle
+
+Lineaire verschiebung?
+
+## Run some statistics on frequencies
+
+```{r stats-neg-scr}
+df <- dat
+df$scr_binair <- ifelse(df$scr < 0, 'negative','positive')
+
+xtabs( ~ df$scr_binair + df$stimType)
+
+# unterscheidet sich die häufigkeit negativer US rekationen pro mean oder max?
+# ist das so correct?
+df %>% filter(stimType == 'us') %>%
+  xtabs( ~ scr_binair + max1mean0, data = .) %>%
+  chisq.test() %>%
+  apa::chisq_apa()
+
+
+
+```
+
+## Compare negative values from BLC to TTP values
+
+```{r}
+# example 
+# compare what the values are in TTP scoring
+df_max <- df_max %>%
+  mutate(stimType_nr = paste(stimType, trial, sep ='_'),
+         id_stimType_nr = paste(id, stimType, trial, sep ='_'))
+
+df_mean <- df_mean %>%
+  mutate(stimType_nr = paste(stimType, trial, sep ='_'),
+         id_stimType_nr = paste(id, stimType, trial, sep ='_'))
+
+dat_TTP <- dat_TTP %>%
+  mutate(stimType_nr = paste(stimType, trial, sep ='_'),
+         id_stimType_nr = paste(id, stimType, trial, sep ='_'))
+
+# now select all cases from df in dat_TTP
+ind_max <- unique(df_max$id_stimType_nr)
+ind_mean <- unique(df_mean$id_stimType_nr)
+
+df_TTP_max <- dat_TTP[dat_TTP$id_stimType_nr %in% ind_max,]
+df_TTP_mean <- dat_TTP[dat_TTP$id_stimType_nr %in% ind_mean,]
+
+# calculate how many are 0, how many are > 0
+#max
+n_TTP_resp <- length(df_TTP_max$scr)
+sum(df_TTP_max$scr == 0, na.rm = T) / n_TTP_resp
+sum(df_TTP_max$scr > 0, na.rm = T) / n_TTP_resp
+sum(is.na(df_TTP_max$scr)) / n_TTP_resp
+
+# per stim type
+df_TTP_max_stimType <- df_TTP_max %>% 
+  filter(scr == 0) %>%
+  group_by(stimType) %>%
+  count() %>% 
+  data.frame()
+#df_TTP_mean_stimType$p_n <- df_TTP_mean_stimType$p /sum(df_TTP_max$scr == 0, na.rm = T)
+
+#mean
+n_TTP_resp <- length(df_TTP_mean$scr)
+sum(df_TTP_mean$scr == 0, na.rm = T) / n_TTP_resp
+sum(df_TTP_mean$scr > 0, na.rm = T) / n_TTP_resp
+sum(is.na(df_TTP_mean$scr)) / n_TTP_resp
+# per stim type
+df_TTP_mean_stimType <- df_TTP_mean %>% 
+  filter(scr == 0) %>%
+  group_by(stimType) %>%
+  count()
+
+# settings for all plots
+y_lim_TTP <- c(0,1000)
+x_lim_TTP <- c(-.1,.75)
+bin_w <- 1/100
+
+# relevel
+df_TTP_max$stimType <- relevel(df_TTP_max$stimType, 'csm')
+df_TTP_mean$stimType <- relevel(df_TTP_mean$stimType, 'csm')
+
+tit_plot <- 'TTP SCR \n based on post CS-MAX'
+
+x_lab_TTP <- 'SCR based on TTP for BLC SCR < 0'
+hist_max_TTP <- ggplot(df_TTP_max, aes(x = scr, fill = stimType)) +
+  geom_histogram(binwidth = bin_w, alpha = .5, position = 'identity') +
+  scale_fill_manual(values = clrs, breaks = c('csp','csm','us'), labels = c('CS +','CS -','US')) +
+  scale_y_continuous(limits = y_lim_TTP) +
+  scale_x_continuous(limits = x_lim_TTP) +
+#  ggtitle(tit_plot) +
+  xlab(x_lab_TTP) +
+  theme(text = element_text(size = 12),
+        legend.title = element_blank())
+
+# tit_plot <- 'TTP SCR \n based on post CS-MAX log rc'
+# hist_max_TTP_lr <- ggplot(df_TTP_max, aes(x = scr_log_rc, fill = stimType)) +
+#   geom_histogram(binwidth = bin_w, alpha = .5, position = 'identity') +
+#   scale_fill_manual(values = c('blue','red','black')) +
+#   scale_y_continuous(limits = y_lim) +
+#   scale_x_continuous(limits = x_lim) +
+#   ggtitle(tit_plot) +
+#   theme(plot.title = element_text(size = 12))
+
+
+# mean
+tit_plot <- 'TTP SCR \n based on post CS-MEAN'
+x_lab_TTP <- 'SCR based on TTP for BLC SCR < 0'
+hist_mean_TTP <- ggplot(df_TTP_mean, aes(x = scr, fill = stimType)) +
+  geom_histogram(binwidth = bin_w, alpha = .5, position = 'identity') +
+  scale_fill_manual(values = clrs, breaks = c('csp','csm','us'), labels = c('CS +','CS -','US')) +
+  scale_y_continuous(limits = y_lim_TTP) +
+  scale_x_continuous(limits = x_lim_TTP) +
+#  ggtitle(tit_plot) +
+  xlab(x_lab_TTP) +
+  theme(text = element_text(size = 12),
+        legend.title = element_blank())
+
+# tit_plot <- 'TTP SCR \n based on post CS-MEAN log rc'
+# hist_mean_TTP_lr <- ggplot(df_TTP_mean, aes(x = scr_log_rc, fill = stimType)) +
+#   geom_histogram(binwidth = bin_w, alpha = .5, position = 'identity') +
+#   scale_fill_manual(values = c('blue','red','black')) +
+#   scale_y_continuous(limits = y_lim) +
+#   scale_x_continuous(limits = x_lim) +
+#   ggtitle(tit_plot) +
+#   theme(plot.title = element_text(size = 12))
+
+
+
+```
+
+```{r}
+# put all plots together
+hist_max + hist_mean + hist_max_TTP + hist_mean_TTP + 
+  plot_layout(guides = 'collect') + 
+  plot_annotation(tag_levels = 'A')
+
+if(save_fig == 'yes'){
+  tiff(here('figures/correction_problems/hist_below_zero_and_TTP.tiff'), units="in", width=8, height=6, res=300)
+plot(hist_max + hist_mean + 
+     hist_max_TTP + hist_mean_TTP + 
+  plot_layout(guides = 'collect') + 
+  plot_annotation(tag_levels = 'A'))
+dev.off()
+}
+```
+
+Thus, what we can infer from these plots (based on these 5 participants) is that on trials where larger baseline values appear than the post CS values, that in many cases these are scored as zero responses in TTP, but there are also cases where this is not the case.
+
+### Are different peaks detected depending on the post CS time window
+
+Let's plot the onset of the baseline-corrected responses in the post CS time window. We are focusing on the maximum response here, for post CS mean values this is redundant. In total there are 12 combinations of time windows.
+
+```{r}
+# plot onsets of baseline corrected responses based on postCS start and post CS end window
+
+dat$onset_postCSmax_CSrel <- dat$onset_postCSmax + as.numeric(as.character(dat$postCS_start))  # this is not pretty
+
+# change names of factor levels, for nice labels on facet tiles
+dat$postCS_start_lab <- revalue(dat$postCS_start, c('0' = 'CSon', 
+        '500' = 'CSon + .5s',
+        '1000' = 'CSon + 1s',
+        '2000' = 'CSon + 2s',
+        '3000' = 'CSon + 3s') )
+
+dat$postCS_end_lab <- revalue(dat$postCS_end, c('4500' = 'CSoff - 1.5s', 
+        '5000' = 'CSoff - 1s',
+        '6000' = 'CSoff',
+        '7000' = 'CSoff + 1s',
+        '8000' = 'CSoff + 2s') )
+
+# make csp first factor level
+dat$stimType <- relevel(dat$stimType, 'us') # to start plotting US en overlay with CSs
+clrs <- c('red','blue','yellow') # colors correspond to order in scale fill manual
+# plot
+plot_onset_max <- dat %>%
+  filter(max1mean0 == 'max') %>%
+  ggplot(aes(x = onset_postCSmax_CSrel/1000, fill = stimType)) + # /1000 bc ms to s
+  geom_histogram(binwidth = .1, alpha = 0.5, position = 'identity') +
+  scale_fill_manual(values = clrs, breaks = c('csp','csm','us'), labels = c('CS +','CS -','US')) +
+  #scale_color_manual(values = clrs, labels = c('CS +', 'CS -', 'US')) +
+  facet_grid(postCS_start_lab ~ postCS_end_lab) +
+  xlab('peak detection window (in s)') +
+  theme(#strip.background = element_blank(),
+ # strip.text.x = element_blank(),
+  text = element_text(size=12),
+  legend.title = element_blank() 
+  #panel.background = element_blank(),
+  #panel.grid = element_blank()
+  )
+
+
+# ik vermoed dat de onset_postCSmax waardes nog + the startTimewindow moeten, ik heb dit nu gedaan maar dat moet ik nog in het matlab file terugzoeken. Ik denk namelijk dat de onset betrekking heeft op het tijdpunt van de peak in het tijdwindow en niet op CS onset.
+
+
+if(save_fig == 'yes'){
+  tiff(here('figures/correction_problems/neg_drift_or_onset_peak_value.tiff'), units="in", width=6, height=4, res=300)
+plot(plot_onset_max)
+dev.off()
+}
+```
+
+## Regression
+
+```{r}
+# RM anova
+anovaModelRM = aov(scr ~ preCS_Time*postCS_startTime*postCS_endTime*max1mean0 + Error(id), dat)
+summary(anovaModelRM)
+
+
+# linear mixed model
+lmeModel = lmer(scr ~ preCS_Time*postCS_startTime*postCS_endTime*max1mean0 + (1|id), dat)
+anova(lmeModel)
+```
+
+```{r}
+tab_model(lmeModel)
+
+```
+
+Negative drift? Response onset compared to post CS time window
+
+Multiple responses, Same peak? Compare onset of selected peak?

@@ -1,0 +1,532 @@
+---
+title: "BC test main effect of task"
+author: "Rachel Sjouwerman"
+date: "11 2 2021"
+output: html_document
+---
+
+```{r setup, message = FALSE, warning = FALSE, echo = FALSE}
+
+library(BayesFactor)        # for Bayesian t testing
+library(colorspace)         # for colorpalettes
+library(dplyr)              # for easy data manipulation
+library(ggplot2)            # for plotting
+#library(glue)               # for gluing strings to data
+library(here)               # for file path
+#library(irr)                # for computing reliability between approaches
+library(knitr)
+#library(lme4)               # for (mixed) linear models
+#library(lmerTest)          # for obtaining sig of effects, detach(package:lmerTest, unload=TRUE)
+library(patchwork)          # for arranging and labeling plots
+#library(sjPlot)             # for putting output mix model in table
+library(rstatix)            # for NHST paired-t-test
+library(tidyr)              # for swithing between long and wide format
+```
+
+```{r chunk-options, include = FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,            # hide code
+  message = FALSE,         # hide messages
+  out.width = "80%",
+  fig.width = 6,
+  fig.asp = 0.618,         # golden ratio betweein height and width  
+  dpi = 300
+)
+
+```
+
+```{r}
+# Should figures gerenerated in this markdown also be saved?
+#save_fig <- 'yes'
+save_fig <- 'no'
+```
+
+# Introduction
+
+Here, baseline correction approaches are compared in terms of CS discrimination effects. I read in a dataset that contains skin conductance data of the ROFL participants. I used matlab to extract all values (i.e., the parameters that differ between the baseline correction approaches) that are used as input for the baseline correction formula.
+
+The matlab script used to create this data set is named: data/baselineScriptROFL_rachel_temp.m
+
+Description of the variables in this dataset can be found in: \_\_\_\_R_codebook\_\_\_\_\_\_\_
+
+# Analysis for multiverse
+
+Everything needs to be adjusted for the bayesian analyses. I've only done it for the NHST part.
+
+## Prepare data
+
+```{r}
+dis_scr <- read.csv(here('data/dis_scr.csv'))
+#head(dis_scr)
+
+# I ASSUME THAT: (sabrina needs to check this)
+# remove error for approach 11, csm and csp are reversed
+df_11 <- dis_scr %>% filter(approach == 11)
+names(df_11)[3:4] <- c('csm','csp')
+df_11$cs_dis <- (df_11$cs_dis)*-1
+dis_scr <- dis_scr[dis_scr$approach != 11,]
+
+df <- merge(dis_scr, df_11, all = T)
+dis_scr <- df
+
+# exclude approach 10, in this file it is approach 9 (yoshiike)
+dis_scr <- dis_scr %>% filter(approach != 9)
+dis_scr[dis_scr$approach == 10, 'approach'] <- 9
+dis_scr[dis_scr$approach == 11, 'approach'] <- 10
+
+# note: exclude first trial?
+# yes is excluded, i.e., no trial 14 
+# compute means over trials
+dis_scr_mean <- dis_scr %>% 
+  group_by(id, approach) %>%
+  summarise(mean_csp = mean(csp,na.rm = T),
+            mean_csm = mean(csm,na.rm = T),
+            mean_dis = mean_csp - mean_csm) %>%
+  data.frame()
+
+names(dis_scr_mean)[3:4] <- c('csp','csm')
+
+# update the type of variables in data
+cols_to_factor <- c('id','approach')
+dis_scr_mean[,cols_to_factor] <- lapply(dis_scr_mean[,cols_to_factor], as.factor)
+
+# effect size 
+dis_scr_mean_long <- pivot_longer(dis_scr_mean, cols = c('csp','csm'), names_to = 'stimType' )
+dis_scr_mean_long <- data.frame(dis_scr_mean_long)
+dis_scr_mean_long$stimType <- as.factor(dis_scr_mean_long$stimType)
+
+# make csp first factor level
+dis_scr_mean_long$stimType <- relevel(dis_scr_mean_long$stimType, 'csp')
+```
+
+```{r}
+# Read and prepare data
+app_param <- read.csv(here('files/approach_specifications.csv'), sep = ';')
+names(app_param)[names(app_param) == 'max_mean'] <- 'max1mean0'
+# TTP
+app_param[app_param$approach == 11, 'preCS'] <- 0
+#app_param <- app_param[-11,] # remove TTP scoring from graph
+
+# ACHTUNG HIER DANN AUCH DIE APPROACH NR ANPASSEN
+# exclude approach 10, in this file it is approach 9 (yoshiike)
+app_param <- app_param %>% filter(approach != 9)
+app_param[app_param$approach == 10, 'approach'] <- 9
+app_param[app_param$approach == 11, 'approach'] <- 10
+
+# Convert to factor
+cols_to_factor <- c('preCS','postCS_start','postCS_end','approach')
+app_param[,cols_to_factor] <- lapply(app_param[,cols_to_factor],as.factor)
+```
+
+Run t-test
+
+```{r}
+t_tests_all <- data.frame()
+for(t_model in 1:nlevels(dis_scr_mean$approach)) {
+  name_t_test <- paste('t', t_model, sep = '_')
+  dat_app <- dis_scr_mean[dis_scr_mean$approach == t_model,]
+  dat_app_m <- t.test(dat_app$csp, dat_app$csm, paired = TRUE, alternative = "two.sided")
+  assign(name_t_test,dat_app_m)
+  #assign(name_t_test, t.test(dat_app$csp, dat_app$csm, paired = TRUE, alternative = "two.sided"))
+  
+  t_tests_all[t_model,'approach'] <- t_model
+  t_tests_all[t_model,'estimate'] <- dat_app_m$estimate
+  t_tests_all[t_model,'ci_low']   <- dat_app_m$conf.int[1]
+  t_tests_all[t_model,'ci_upp']   <- dat_app_m$conf.int[2]
+  t_tests_all[t_model,'t_val']    <- dat_app_m$statistic
+  t_tests_all[t_model,'p_val']    <- dat_app_m$p.value
+}
+
+```
+
+Run t-test on all 11 approaches. Display results (i.e., effect size) in specification curve.
+
+```{r}
+# compute means, wide format
+# res_ttest_means <- dat_acq_means %>% filter(stimType %in% c('csp', 'csm')) %>%
+#   group_by(approach, preCS, postCS_start, postCS_end,max1mean0) %>%
+#   summarise(scr_mean_csp = mean(scr_mean[stimType == 'csp'], na.rm = T),
+#             scr_mean_csm = mean(scr_mean[stimType == 'csm'], na.rm = T),
+#             scr_sd_csp = sd(scr_mean[stimType == 'csp'], na.rm = T),
+#             scr_sd_csm = sd(scr_mean[stimType == 'csm'], na.rm = T))
+  
+# t test; select csp and csm 
+res_ttest <- dis_scr_mean_long %>% filter(stimType %in% c('csp', 'csm')) %>%
+  group_by(approach) %>%
+  rstatix::t_test(value ~ stimType, data = ., paired = T) 
+
+# effect size
+res_ttest_d <- dis_scr_mean_long %>% filter(stimType %in% c('csp', 'csm')) %>%
+  group_by(approach) %>%
+rstatix::cohens_d(value ~ stimType, data = .,paired = T,ci = T)
+
+# add index to order by effect size
+# we have 11 unique approaches
+res_ttest_d$approach_num <-  1:nrow(res_ttest_d)
+res_ttest_d[order(res_ttest_d$effsize),'approach_eff_order'] <-  1:nrow(res_ttest_d)
+
+
+# add time window information for 11 appraoches
+res_ttest_d <- merge(res_ttest_d, app_param)
+```
+
+Run Bayesian t-test on all 120 approaches. Extract effect size for specification curve. Note that the effect size in fact represent something similar as when plotting the BFs. Because the Bayesian t-test tests whether the effect size is different from 0.
+
+```{r}
+res_tBF <- list(approach = NA, 
+                ttest_BF = NA,
+                ttest_BF_post = NA) 
+
+n_appr <- length(levels(dis_scr_mean_long$approach))
+for(ind in 1:n_appr){
+  # extract name of approach
+  appr <- levels(dis_scr_mean_long$approach)[ind]
+  
+  # build dummy dataframe with one approach only
+  dat_dummy <- dis_scr_mean_long %>% filter(stimType %in% c('csp','csm')) %>%
+    filter(approach == appr)
+  
+  # copmute BF (note: when using the formula notation, paired does not work)
+  #bf <- ttestBF(formula = scr_mean ~ stimType, data = dat_dummy, paired = T)
+  bf <- ttestBF(dat_dummy$scr_mean[dat_dummy$stimType == 'csp'], dat_dummy$scr_mean[dat_dummy$stimType == 'csm'], paired = T)
+  bf_post <- posterior(bf, iterations = 1000000)
+  
+  # put in dataframe
+  res_tBF$approach[ind] <- appr
+  res_tBF$ttest_BF[ind] <- list(bf)
+  res_tBF$ttest_BF_post[ind] <- list(bf_post)
+  
+}
+
+
+
+# extract relevant information from list, build empty dataframe
+results_BF_effsize <- data.frame(approach = NA,
+                                 approach_num = NA,
+                                 effsize = NA,
+                                 effsize_low =NA,
+                                 effsize_upp = NA,
+                                 BF_ln = NA)
+
+for (ind in 1:120){
+  results_BF_effsize[ind, 'approach'] <- as.character(res_tBF$approach[ind])
+  results_BF_effsize[ind, 'approach_num'] <- ind
+  # extract effect size cand 95% interval around effect size
+  results_BF_effsize[ind,'effsize'] <- median(res_tBF$ttest_BF_post[[ind]][,'delta'])
+  # extract CI around estimate
+  results_BF_effsize[ind, 'effsize_low'] <- summary(res_tBF$ttest_BF_post[[ind]])$quantiles['delta',][1]
+  results_BF_effsize[ind, 'effsize_upp'] <-summary(res_tBF$ttest_BF_post[[ind]])$quantiles['delta',][4]
+  # add log BF
+  results_BF_effsize[ind, 'BF_ln'] <- res_tBF$ttest_BF[[ind]]@bayesFactor[['bf']]
+}
+
+# add parameters seperately
+results_BF_effsize$approach <- factor(results_BF_effsize$approach)
+# this is not optimal:
+results_BF_effsize <- merge(results_BF_effsize, data.frame(res_ttest[1:5]))
+
+# add column for ordered effect sizes
+results_BF_effsize[order( results_BF_effsize$effsize),'approach_eff_order'] <-  1:nrow(results_BF_effsize)
+```
+
+Specification curve for regular pairwise t-test.
+
+```{r}
+# define colors for plotting
+clrs <- c("#ffd700",
+"#fa8775",
+"#ea5f94",
+"#9d02d7",
+"#0000ff",
+"#2c2c2c")
+
+```
+
+```{r}
+# labels
+x_lab <- 'approach number ordered by effect size'
+y_lab <- 'effect size (Cohen\'s D)'
+
+# order by effect size
+# without colors
+p0 <- res_ttest_d %>%
+  ggplot(aes(x = approach_eff_order, y = effsize, color = approach[1])) +
+  geom_point() +
+  geom_errorbar(aes(ymin = conf.low, ymax =conf.high)) +
+  scale_color_manual(name = 'paired sample t-test', values = 'black') +
+  theme_classic() +
+  theme(text = element_text(size=20),
+        legend.position = 'top') +
+  xlab(x_lab) +
+  ylab(y_lab) +
+  scale_x_continuous(labels = res_ttest_d$approach_num, breaks = res_ttest_d$approach_eff_order)
+
+# try different colors for categories
+p1 <- res_ttest_d %>%
+  ggplot(aes(x = approach_eff_order, y = effsize, color = preCS)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high)) +
+  scale_color_manual(name = 'pre-CS time window', values = clrs) +
+  theme_classic() +
+  theme(text = element_text(size=20),
+        legend.position = 'top') +
+  xlab(x_lab) +
+  ylab(y_lab) +
+ scale_x_continuous(labels = res_ttest_d$approach_num, breaks = res_ttest_d$approach_eff_order)
+
+p2 <- res_ttest_d %>%
+  ggplot(aes(x = approach_eff_order, y = effsize, color = postCS_start)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high)) +
+  scale_color_manual(name = 'post-CS time window start (ms)', values = clrs) +
+  theme_classic() +
+  theme(text = element_text(size=20),
+        legend.position = 'top') +
+  xlab(x_lab) +
+  ylab(y_lab) +
+  scale_x_continuous(labels = res_ttest_d$approach_num, breaks = res_ttest_d$approach_eff_order)
+
+p3 <- res_ttest_d %>%
+  ggplot(aes(x = approach_eff_order, y = effsize, color = postCS_end)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high)) +
+  scale_color_manual(name = 'post-CS time window end (ms)', values = clrs) +
+  theme_classic() +
+  theme(text = element_text(size=20),
+        legend.position = 'top') +
+  xlab(x_lab) +
+  ylab(y_lab) +
+  scale_x_continuous(labels = res_ttest_d$approach_num, breaks = res_ttest_d$approach_eff_order)
+
+p4 <- res_ttest_d %>%
+  ggplot(aes(x = approach_eff_order, y = effsize, color =max1mean0)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = conf.low, ymax =conf.high)) +
+  scale_color_manual(name = 'function in post-CS time window', values = clrs) +
+  theme_classic() +
+  theme(text = element_text(size=20),
+        legend.position = 'top') +
+  xlab(x_lab) +
+  ylab(y_lab) +
+ scale_x_continuous(labels = res_ttest_d$approach_num, breaks = res_ttest_d$approach_eff_order)
+
+
+
+# plot specifications of BC parameters
+s1 <- ggplot(res_ttest_d, aes(x = approach_eff_order, y = preCS, color = preCS)) +
+  geom_point(shape = '|', size = 5) +
+   scale_color_manual(values = rep('black', length(levels(res_ttest_d$preCS)) )) +
+  theme(axis.text.x = element_blank(),
+        axis.title.x = element_blank(), 
+        axis.ticks.x = element_blank(),
+        panel.background = element_blank(),
+        legend.position = 'none') +
+  theme(text = element_text(size=20)) 
+
+s2 <- ggplot(res_ttest_d, aes(x = approach_eff_order, y = postCS_start, color = postCS_start)) +
+  geom_point(shape = '|', size = 5) + 
+   scale_color_manual(values = rep('black', length(levels(res_ttest_d$postCS_start)) )) +
+  theme(axis.text.x = element_blank(),
+        axis.title.x = element_blank(), 
+        axis.ticks.x = element_blank(),
+        panel.background = element_blank(),
+        legend.position = 'none') +
+  theme(text = element_text(size=20)) 
+
+s3 <- ggplot(res_ttest_d, aes(x = approach_eff_order, y = postCS_end, color = postCS_end)) +
+  geom_point(shape = '|', size = 5) + 
+   scale_color_manual(values = rep('black', length(levels(res_ttest_d$postCS_end)) )) +
+  theme(axis.text.x = element_blank(),
+        axis.title.x = element_blank(), 
+        axis.ticks.x = element_blank(),
+        panel.background = element_blank(),
+        legend.position = 'none') +
+  theme(text = element_text(size=20)) 
+  
+s4 <- ggplot(res_ttest_d, aes(x = approach_eff_order, y = max1mean0, color = max1mean0)) +
+  geom_point(shape = '|', size = 5) + 
+   scale_color_manual(values = rep('black', length(levels(res_ttest_d$max1mean0)) )) +
+  theme(axis.text.x = element_blank(),
+        axis.title.x = element_blank(), 
+        axis.ticks.x = element_blank(),
+        panel.background = element_blank(),
+        legend.position = 'none') +
+  theme(text = element_text(size=20)) +
+  ylab('function') 
+
+
+#ps0 <- p0 / s_all + plot_layout(heights = c(1,3))
+ps0 <- p0 / s1 / s2 / s3 / s4  
+
+# plots for supplement, color coded
+ps1 <- p1 / (s1 +  scale_color_manual(values = clrs)) / s2 / s3 / s4 
+ps2 <- p2 / s1 / (s2 +  scale_color_manual(values = clrs)) / s3 / s4 
+ps3 <- p3 / s1 / s2 / (s3 +  scale_color_manual(values = clrs)) / s4 
+ps4 <- p4 / s1 / s2 / s3 / (s4 +  scale_color_manual(values = clrs))
+
+if (save_fig == 'yes'){
+tiff(here('figures/NHST/spec_curve_lit_search.tiff'), units="in", width=16, height=12, res=300)
+plot(ps0 + plot_layout(heights = c(2,1,1,1,1)))
+dev.off()
+
+tiff(here('figures/NHST/spec_curve_preCS_lit_search.tiff'), units="in", width=16, height=12, res=300)
+plot(ps1 + plot_layout(heights = c(2,1,1,1,1)))
+dev.off()
+
+tiff(here('figures/NHST/spec_curve_postCS_start_lit_search.tiff'), units="in", width=16, height=12, res=300)
+plot(ps2 + plot_layout(heights = c(2,1,1,1,1)))
+dev.off()
+
+tiff(here('figures/NHST/spec_curve_postCS_end_lit_search.tiff'), units="in", width=16, height=12, res=300)
+plot(ps3 + plot_layout(heights = c(2,1,1,1,1)))
+dev.off()
+
+tiff(here('figures/NHST/spec_curve_meanMax_lit_search.tiff'), units="in", width=16, height=12, res=300)
+plot(ps4 + plot_layout(heights = c(2,1,1,1,1)))
+dev.off()
+
+}
+
+
+# actually plot in markdown
+#p_spec_curves
+
+```
+
+\
+
+Specification curve for Bayesian effect size.
+
+```{r}
+# labels
+x_lab <- 'approach number ordered by effect size'
+y_lab <- 'effect size (median BF)'
+
+# order by effect size
+# without color
+p0 <- results_BF_effsize %>%
+  ggplot(aes(x = approach_eff_order, y = effsize)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = effsize_low, ymax =effsize_upp)) +
+  theme_classic() +
+  xlab(x_lab) +
+  ylab(y_lab)
+
+# try different colors for categories
+
+
+p1 <- results_BF_effsize %>%
+  ggplot(aes(x = approach_eff_order, y = effsize, color = preCS)) +
+  geom_point() +
+    geom_errorbar(aes(ymin = effsize_low, ymax = effsize_upp)) +
+#  scale_color_discrete_sequential(palette = "Inferno") +
+  #    scale_color_discrete_diverging(palette = "Tropic") +
+   scale_color_manual(values = clrs) +
+  theme_classic() +
+  xlab(x_lab) +
+  ylab(y_lab)
+
+p2 <- results_BF_effsize %>%
+  ggplot(aes(x = approach_eff_order, y = effsize, color = postCS_start)) +
+  geom_point() +
+    geom_errorbar(aes(ymin = effsize_low, ymax = effsize_upp)) +
+#  scale_color_discrete_sequential(palette = "Inferno") +
+  #    scale_color_discrete_diverging(palette = "Tropic") +
+  scale_color_manual(values = clrs) +
+  theme_classic() +
+  xlab(x_lab) +
+  ylab(y_lab)
+
+p3 <- results_BF_effsize %>%
+  ggplot(aes(x = approach_eff_order, y = effsize, color = postCS_end)) +
+  geom_point() +
+    geom_errorbar(aes(ymin = effsize_low, ymax = effsize_upp)) +
+#  scale_color_discrete_sequential(palette = "Inferno") +
+   #   scale_color_discrete_diverging(palette = "Tropic") +
+   scale_color_manual(values = clrs) +
+  theme_classic() +
+  xlab(x_lab) +
+  ylab(y_lab)
+
+p4 <- results_BF_effsize %>%
+  ggplot(aes(x = approach_eff_order, y = effsize, color =max1mean0)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = effsize_low, ymax =effsize_upp)) +
+
+ #   scale_color_discrete_divergingx(palette = "Tropic") +
+  scale_color_manual(values = clrs) +
+  theme_classic() +
+  xlab(x_lab) +
+  ylab(y_lab)
+
+#p1 + p2 + p3 + p4
+
+
+# plot specifications of BC parameters
+s1 <- ggplot(results_BF_effsize, aes(x = approach_eff_order, y = preCS, color = preCS)) +
+  geom_point(shape = '|', size = 5) +
+  scale_color_manual(values = rep('black', length(levels(results_BF_effsize$preCS)) )) +
+  theme(axis.text.x = element_blank(),
+        axis.title.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        panel.background = element_blank(),
+        legend.position = 'none')
+
+s2 <- ggplot(results_BF_effsize, aes(x = approach_eff_order, y = postCS_start, color = postCS_start)) +
+  geom_point(shape = '|', size = 5) + 
+  scale_color_manual(values = rep('black', length(levels(results_BF_effsize$postCS_start)) )) +
+  theme(axis.text.x = element_blank(),
+        axis.title.x = element_blank(), 
+        axis.ticks.x = element_blank(),
+        panel.background = element_blank(),
+        legend.position = 'none')
+
+s3 <- ggplot(results_BF_effsize, aes(x = approach_eff_order, y = postCS_end, color = postCS_end)) +
+  geom_point(shape = '|', size = 5) + 
+  scale_color_manual(values = rep('black', length(levels(results_BF_effsize$postCS_end)) )) +
+  theme(axis.text.x = element_blank(),
+        axis.title.x = element_blank(), 
+        axis.ticks.x = element_blank(),
+        panel.background = element_blank(),
+        legend.position = 'none')
+  
+s4 <- ggplot(results_BF_effsize, aes(x = approach_eff_order, y = max1mean0, color = max1mean0)) +
+  geom_point(shape = '|', size = 5) + 
+  scale_color_manual(values = rep('black', length(levels(results_BF_effsize$max1mean0)) )) +
+  theme(axis.text.x = element_blank(),
+        axis.title.x = element_blank(), 
+        axis.ticks.x = element_blank(),
+        panel.background = element_blank(),
+        legend.position = 'none') 
+
+
+s_all <- s1 / s2 / s3 / s4
+
+p0 / s_all + plot_layout(heights = c(1,3))
+
+p1 / s_all + plot_layout(heights = c(1,3))
+p1 / s1 / s2 / s3 / s4#+ plot_layout(heights = c(1,3))
+
+# plots for supplement, color coded
+p1 / (s1 +  scale_color_manual(values = clrs)) / s2 / s3 / s4 
+p2 / s1 / (s2 +  scale_color_manual(values = clrs)) / s3 / s4 
+p3 / s1 / s2 / (s3 +  scale_color_manual(values = clrs)) / s4 
+p4 / s1 / s2 / s3 / (s4 +  scale_color_manual(values = clrs))
+ 
+ 
+p_spec_curvesBF <-  (p1 / s_all) +  plot_layout(heights = c(2,1)) | 
+  (p2 / s_all) + plot_layout(heights = c(2,1)) | 
+  (p3 / s_all) +  plot_layout(heights = c(2,1))| 
+  (p4 / s_all) +  plot_layout(heights = c(2,1))
+
+if (save_fig == 'yes'){
+ tiff(here('figures/spec_curve_effsizesBF.tiff'), units="in", width=24, height=12, res=450)
+plot(p_spec_curvesBF)
+dev.off()
+}
+
+# actually plot in markdown
+#p_spec_curvesBF
+```
+
+Make one figure without color to put in manuscript. Color scaled figures are for the supplement.
