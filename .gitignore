@@ -39,7 +39,7 @@ vignettes/*.pdf
 .Renviron
 
 # Directories with data or not yet relevant 
-.data
-.files
-.figures
-.scripts_m
+/data
+/files
+/figures
+/scripts_m
