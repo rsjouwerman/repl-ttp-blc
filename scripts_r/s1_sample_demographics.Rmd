@@ -1,7 +1,7 @@
 ---
 title: "Sample descriptives"
 author: "Rachel Sjouwerman"
-date: "6 4 2021"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: html_document
 ---
 
