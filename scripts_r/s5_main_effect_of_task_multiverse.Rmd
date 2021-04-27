@@ -38,8 +38,9 @@ knitr::opts_chunk$set(
 
 ```{r}
 # Should figures gerenerated in this markdown also be saved?
-#save_fig <- 'yes'
-save_fig <- 'no'
+save_fig <- 'yes'
+fig_ind <- 3
+save_dat <- 'yes'
 ```
 
 # Introduction
@@ -142,7 +143,7 @@ n_subs <- dat %>%
   length()
 ```
 
-```{r}
+```{r data-combine-TTP-multiverse}
 # combine BC approaches with TTP approach
 # claudi's dataframe contains also 118 pp
 dat_TTP <- dat_TTP %>%
@@ -160,13 +161,7 @@ dat_TTP <- dat_TTP[,c("id","postCS_start","postCS_end","preCS","max1mean0",     
 dat <- rbind(dat, dat_TTP)
 ```
 
-Make flow chart of analytic choices.
-
-```{r}
-# build decision tree 
-```
-
-```{r}
+```{r build-acq-df}
 # remove first cs+ and first cs- trial (also first US trial)
 # compute acquisition means
 # note that if package plyr is loaded, this does not work properly!
@@ -180,9 +175,9 @@ n_appr <- length(levels(dat_acq_means$approach))
 
 ## Specification curve
 
-Run t-test on all 200 BC approaches and 1 TTP approach. Display results (i.e., effect size) in specification curve.
+Run t-test on all 150 BLC approaches and 1 TTP approach. Display results (i.e., effect size) in specification curve.
 
-```{r}
+```{r ttest-NHST}
 # compute means, wide format
 res_ttest_means <- dat_acq_means %>% filter(stimType %in% c('csp', 'csm')) %>%
   group_by(approach, preCS, postCS_start, postCS_end,max1mean0) %>%
@@ -202,14 +197,15 @@ res_ttest_d <- dat_acq_means %>% filter(stimType %in% c('csp', 'csm')) %>%
 rstatix::cohens_d(scr_mean ~ stimType, data = .,paired = T,ci = T)
 
 # add index to order by effect size
-# we have 200 + 1 unique approaches
+# we have n + 1 unique approaches
 res_ttest_d$approach_num <-  1:nrow(res_ttest_d)
 res_ttest_d[order(res_ttest_d$effsize),'approach_eff_order'] <-  1:nrow(res_ttest_d)
 ```
 
-Run Bayesian t-test on all 200 BC approaches and 1 TTP approach. Extract effect size for specification curve. Note that the effect size in fact represent something similar as when plotting the BFs. Because the Bayesian t-test tests whether the effect size is different from 0.
+Run Bayesian t-test on all 150 BLC approaches and 1 TTP approach. Extract effect size for specification curve. Note that the effect size in fact represent something similar as when plotting the BFs. Because the Bayesian t-test tests whether the effect size is different from 0.
 
-```{r}
+```{r ttest-Bayesian}
+n_its <- 1000000  # number of iterations, should this be 1000000?
 res_tBF <- list(approach = NA, 
                 ttest_BF = NA,
                 ttest_BF_post = NA) 
@@ -220,13 +216,14 @@ for(ind in 1:n_appr){
   appr <- levels(dat_acq_means$approach)[ind]
   
   # build dummy dataframe with one approach only
-  dat_dummy <- dat_acq_means %>% filter(stimType %in% c('csp','csm')) %>%
+  dat_dummy <- dat_acq_means %>% 
+    filter(stimType %in% c('csp','csm')) %>%
     filter(approach == appr)
   
   # copmute BF (note: when using the formula notation, paired does not work)
   #bf <- ttestBF(formula = scr_mean ~ stimType, data = dat_dummy, paired = T)
   bf <- ttestBF(dat_dummy$scr_mean[dat_dummy$stimType == 'csp'], dat_dummy$scr_mean[dat_dummy$stimType == 'csm'], paired = T)
-  bf_post <- posterior(bf, iterations = 100000) # 1000000
+  bf_post <- posterior(bf, iterations = n_its) 
   
   # put in dataframe
   res_tBF$approach[ind] <- appr
@@ -268,8 +265,11 @@ results_BF_effsize[order( results_BF_effsize$effsize),'approach_eff_order'] <-  
 
 Specification curve for regular pairwise t-test.
 
-```{r}
+```{r plot-settings}
 # set colors for plotting
+# set colors
+clrs <- colorspace::sequential_hcl(n = 6, palette = 'Plasma')
+barplot(1:6, col=clrs)
 clrs <- c("#ffd700",
 "#fa8775",
 "#ea5f94",
@@ -286,14 +286,14 @@ fig_h <- 5
 fig_res <- 300
 
 # change labels for ticks on specification index to seconds, note that if categories change these labels need to be adjusted
-labs_bw <- c('1','2','4','10','TTP') # note that I removed BW: 3s
+labs_bw <- c('1','2','10','TTP') # note that I removed BW: 3s & 4s
 labs_pdw_on <- c('0','0.5','1','2','3','TTP')
 labs_pdw_off <- c('4.5','5','6','7','8','TTP')
 # labs_function <- c('mean','max') # redundant
 
 ```
 
-```{r}
+```{r plot-curves}
 # labels
 x_lab <- 'approach number ordered by effect size'
 y_lab <- 'effect size (Cohen\'s D)'
@@ -311,11 +311,12 @@ p0 <- res_ttest_d %>%
   ylab(y_lab) 
 
 # try different colors for categories
+# colored by BLW
 p1 <- res_ttest_d %>%
   ggplot(aes(x = approach_eff_order, y = effsize, color = preCS)) +
   geom_point() +
   geom_errorbar(aes(ymin = conf.low, ymax = conf.high)) +
-  scale_color_manual(name = 'BLW', values = clrs[-3], labels = labs_bw) +
+  scale_color_manual(name = 'BLW', values = clrs[c(-3,-4)], labels = labs_bw) +
   theme_classic() +
   theme(text = element_text(size=size_text),
         legend.position = 'top') +
@@ -324,12 +325,12 @@ p1 <- res_ttest_d %>%
   guides(color = guide_legend(nrow = 1))
 
 
-
+# colored by 
 p2 <- res_ttest_d %>%
   ggplot(aes(x = approach_eff_order, y = effsize, color = postCS_start)) +
   geom_point() +
   geom_errorbar(aes(ymin = conf.low, ymax = conf.high)) +
-  scale_color_manual(name = 'PDW-onset', values = clrs, labels = labs_pdw_on) +
+  scale_color_manual(name = 'PDW-start', values = clrs, labels = labs_pdw_on) +
   theme_classic() +
   theme(text = element_text(size=size_text),
         legend.position = 'top') +
@@ -341,7 +342,7 @@ p3 <- res_ttest_d %>%
   ggplot(aes(x = approach_eff_order, y = effsize, color = postCS_end)) +
   geom_point() +
   geom_errorbar(aes(ymin = conf.low, ymax = conf.high)) +
-  scale_color_manual(name = 'PDW-offset', values = clrs, labels = labs_pdw_off) +
+  scale_color_manual(name = 'PDW-end', values = clrs, labels = labs_pdw_off) +
   theme_classic() +
   theme(text = element_text(size=size_text),
         legend.position = 'top') +
@@ -363,6 +364,11 @@ p4 <- res_ttest_d %>%
 #p1 + p2 + p3 + p4
 
 
+
+
+```
+
+```{r plot-spec}
 # plot specifications of BC parameters
 s1 <- ggplot(res_ttest_d, aes(x = approach_eff_order, y = preCS, color = preCS)) +
   geom_point(shape = '|', size = size_point) +
@@ -378,7 +384,7 @@ s1 <- ggplot(res_ttest_d, aes(x = approach_eff_order, y = preCS, color = preCS))
 s2 <- ggplot(res_ttest_d, aes(x = approach_eff_order, y = postCS_start, color = postCS_start)) +
   geom_point(shape = '|', size = size_point) + 
    scale_color_manual(values = rep('black', length(levels(res_ttest_d$postCS_start)) )) +
-    scale_y_discrete(name = 'PDW-onset', labels = labs_pdw_on) +
+    scale_y_discrete(name = 'PDW-start', labels = labs_pdw_on) +
   theme(axis.text.x = element_blank(),
         axis.title.x = element_blank(), 
         axis.ticks.x = element_blank(),
@@ -389,7 +395,7 @@ s2 <- ggplot(res_ttest_d, aes(x = approach_eff_order, y = postCS_start, color = 
 s3 <- ggplot(res_ttest_d, aes(x = approach_eff_order, y = postCS_end, color = postCS_end)) +
   geom_point(shape = '|', size = size_point) + 
    scale_color_manual(values = rep('black', length(levels(res_ttest_d$postCS_end)) )) +
-    scale_y_discrete(name = 'PDW-offset', labels = labs_pdw_off) +
+    scale_y_discrete(name = 'PDW-end', labels = labs_pdw_off) +
   theme(axis.text.x = element_blank(),
         axis.title.x = element_blank(), 
         axis.ticks.x = element_blank(),
@@ -407,46 +413,37 @@ s4 <- ggplot(res_ttest_d, aes(x = approach_eff_order, y = max1mean0, color = max
         panel.background = element_blank(),
         legend.position = 'none') +
   theme(text = element_text(size=size_text)) 
-s_all <- s1 / s2 / s3 / s4
-#s_all 
 
-#ps0 <- p0 / s_all + plot_layout(heights = c(1,3))
 ps0 <- p0 / s1 / s2 / s3 / s4  
 
-# color coded spec curves next to each other 
-p_spec_curves <-  (p1 / s_all) +  plot_layout(heights = c(2,1)) | 
-  (p2 / s_all) + plot_layout(heights = c(2,1)) | 
-  (p3 / s_all) +  plot_layout(heights = c(2,1))| 
-  (p4 / s_all) +  plot_layout(heights = c(2,1))
-
 # plots for supplement, color coded
-ps1 <- p1 / (s1 +  scale_color_manual(values = clrs[-3])) / s2 / s3 / s4 
+ps1 <- p1 / (s1 +  scale_color_manual(values = clrs[c(-3,-4)])) / s2 / s3 / s4 
 ps2 <- p2 / s1 / (s2 +  scale_color_manual(values = clrs)) / s3 / s4 
 ps3 <- p3 / s1 / s2 / (s3 +  scale_color_manual(values = clrs)) / s4 
 ps4 <- p4 / s1 / s2 / s3 / (s4 +  scale_color_manual(values = clrs[c(1,3,6)]))
 
-if (save_fig == 'yes'){
- tiff(here('figures/spec_curve_effsizes.tiff'), units="in", width=fig_w, height=fig_h, res=fig_res)
-plot(p_spec_curves)
-dev.off()
 
-tiff(here('figures/NHST/spec_curve.tiff'), units="in", width=fig_w, height=fig_h, res=fig_res)
+```
+
+```{r save-spec-curves-NHST}
+if (save_fig == 'yes'){
+png(here::here(paste0('figures/fig_', fig_ind, '_curve_cohD.png')), units="in", width=fig_w, height=fig_h, res=fig_res)
 plot(ps0 + plot_layout(heights = c(2,1,1,1,1)))
 dev.off()
 
-tiff(here('figures/NHST/spec_curve_preCS.tiff'), units="in", width= fig_w, height=fig_h, res=fig_res)
+png(here::here(paste0('figures/fig_', fig_ind, '_curve_cohD_BLW.png')), units="in", width= fig_w, height=fig_h, res=fig_res)
 plot(ps1 + plot_layout(heights = c(2,1,1,1,1)))
 dev.off()
 
-tiff(here('figures/NHST/spec_curve_postCS_start.tiff'), units="in", width=fig_w, height=fig_h, res=fig_res)
+png(here::here(paste0('figures/fig_', fig_ind, '_curve_cohD_PDW_start.png')), units="in", width=fig_w, height=fig_h, res=fig_res)
 plot(ps2 + plot_layout(heights = c(2,1,1,1,1)))
 dev.off()
 
-tiff(here('figures/NHST/spec_curve_postCS_end.tiff'), units="in", width=fig_w, height=fig_h, res=fig_res)
+png(here::here(paste0('figures/fig_', fig_ind, '_curve_cohD_PDW_end.png')), units="in", width=fig_w, height=fig_h, res=fig_res)
 plot(ps3 + plot_layout(heights = c(2,1,1,1,1)))
 dev.off()
 
-tiff(here('figures/NHST/spec_curve_meanMax.tiff'), units="in", width=fig_w, height=fig_h, res=fig_res)
+png(here::here(paste0('figures/fig_', fig_ind, '_curve_cohD_fun.png')), units="in", width=fig_w, height=fig_h, res=fig_res)
 plot(ps4 + plot_layout(heights = c(2,1,1,1,1)))
 dev.off()
 
@@ -455,14 +452,13 @@ dev.off()
 
 # actually plot in markdown
 #p_spec_curves
-
 ```
 
 \
 
 Specification curve for Bayesian effect size.
 
-```{r}
+```{r plot-curves-BF}
 # labels
 x_lab <- 'approach number ordered by effect size'
 y_lab <- 'effect size (median BF)'
@@ -485,7 +481,7 @@ p1 <- results_BF_effsize %>%
   ggplot(aes(x = approach_eff_order, y = effsize, color = preCS)) +
   geom_point() +
   geom_errorbar(aes(ymin = effsize_low, ymax = effsize_upp)) +
-  scale_color_manual(name = 'BLW',values = clrs[-3], labels = labs_bw) +
+  scale_color_manual(name = 'BLW',values = clrs[c(-3,-4)], labels = labs_bw) +
   theme_classic() +
   theme(text = element_text(size=size_text),
         legend.position = 'top') +
@@ -497,7 +493,7 @@ p2 <- results_BF_effsize %>%
   ggplot(aes(x = approach_eff_order, y = effsize, color = postCS_start)) +
   geom_point() +
     geom_errorbar(aes(ymin = effsize_low, ymax = effsize_upp)) +
-  scale_color_manual(name = 'PDW-onset', values = clrs, labels = labs_pdw_on) +
+  scale_color_manual(name = 'PDW-start', values = clrs, labels = labs_pdw_on) +
   theme_classic() +
   theme(text = element_text(size=size_text),
         legend.position = 'top') +
@@ -509,7 +505,7 @@ p3 <- results_BF_effsize %>%
   ggplot(aes(x = approach_eff_order, y = effsize, color = postCS_end)) +
   geom_point() +
     geom_errorbar(aes(ymin = effsize_low, ymax = effsize_upp)) +
-   scale_color_manual(name = 'PDW-offset', values = clrs, labels = labs_pdw_off) +
+   scale_color_manual(name = 'PDW-end', values = clrs, labels = labs_pdw_off) +
   theme_classic() +
    theme(text = element_text(size=size_text),
         legend.position = 'top') +
@@ -530,8 +526,9 @@ p4 <- results_BF_effsize %>%
   guides(color = guide_legend(nrow = 1))
 
 #p1 + p2 + p3 + p4
+```
 
-
+```{r plot-spec-BF}
 # plot specifications of BC parameters
 s1 <- ggplot(results_BF_effsize, aes(x = approach_eff_order, y = preCS, color = preCS)) +
   geom_point(shape = '|', size = size_point) +
@@ -555,7 +552,7 @@ s2 <- ggplot(results_BF_effsize, aes(x = approach_eff_order, y = postCS_start, c
         panel.background = element_blank(),
         legend.position = 'none') +
   theme(text = element_text(size = size_text)) +
-  ylab('PDW-onset')
+  ylab('PDW-start')
 
 s3 <- ggplot(results_BF_effsize, aes(x = approach_eff_order, y = postCS_end, color = postCS_end)) +
   geom_point(shape = '|', size = size_point) + 
@@ -567,7 +564,7 @@ s3 <- ggplot(results_BF_effsize, aes(x = approach_eff_order, y = postCS_end, col
         panel.background = element_blank(),
         legend.position = 'none') +
   theme(text = element_text(size = size_text)) +
-  ylab('PDW-offset')
+  ylab('PDW-end')
   
 s4 <- ggplot(results_BF_effsize, aes(x = approach_eff_order, y = max1mean0, color = max1mean0)) +
   geom_point(shape = '|', size = size_point) + 
@@ -581,7 +578,7 @@ s4 <- ggplot(results_BF_effsize, aes(x = approach_eff_order, y = max1mean0, colo
   ylab('function') 
 
 
-s_all <- s1 / s2 / s3 / s4
+# s_all <- s1 / s2 / s3 / s4
 
 # p0 / s_all + plot_layout(heights = c(1,3))
 
@@ -592,43 +589,43 @@ s_all <- s1 / s2 / s3 / s4
 ps0 <- p0 / s1 / s2 / s3 / s4  
 
 # plots for supplement, color coded
-ps1 <- p1 / (s1 +  scale_color_manual(values = clrs[-3])) / s2 / s3 / s4 
+ps1 <- p1 / (s1 +  scale_color_manual(values = clrs[c(-3,-4)])) / s2 / s3 / s4 
 ps2 <- p2 / s1 / (s2 +  scale_color_manual(values = clrs)) / s3 / s4 
 ps3 <- p3 / s1 / s2 / (s3 +  scale_color_manual(values = clrs)) / s4 
 ps4 <- p4 / s1 / s2 / s3 / (s4 +  scale_color_manual(values = clrs[c(1,3,6)]))
  
  
-p_spec_curvesBF <-  (p1 / s_all) +  plot_layout(heights = c(2,1)) | 
-  (p2 / s_all) + plot_layout(heights = c(2,1)) | 
-  (p3 / s_all) +  plot_layout(heights = c(2,1))| 
-  (p4 / s_all) +  plot_layout(heights = c(2,1))
+# p_spec_curvesBF <-  (p1 / s_all) +  plot_layout(heights = c(2,1)) | 
+#   (p2 / s_all) + plot_layout(heights = c(2,1)) | 
+#   (p3 / s_all) +  plot_layout(heights = c(2,1))| 
+#   (p4 / s_all) +  plot_layout(heights = c(2,1))
 
+```
+
+```{r save-spec-curves-BF}
 if (save_fig == 'yes'){
-   png(here('figures/spec_curve_effsizesBF.png'), units="in", width=fig_w, height=fig_h, res=fig_res)
-plot(p_spec_curvesBF)
-dev.off()
+# 
+#  png(here('figures/spec_curve_effsizesBF.tiff'), units="in", width=fig_w, height=fig_h, res=fig_res)
+# plot(p_spec_curvesBF)
+# dev.off()
 
- tiff(here('figures/spec_curve_effsizesBF.tiff'), units="in", width=fig_w, height=fig_h, res=fig_res)
-plot(p_spec_curvesBF)
-dev.off()
-
-tiff(here('figures/NHST/spec_curve_BF.tiff'), units="in", width=fig_w, height=fig_h, res=fig_res)
+png(here(paste0('figures/fig_', fig_ind, '_curve_BFmed.png')), units="in", width=fig_w, height=fig_h, res=fig_res)
 plot(ps0 + plot_layout(heights = c(2,1,1,1,1)))
 dev.off()
 
-tiff(here('figures/NHST/spec_curve_preCS_BF.tiff'), units="in", width= fig_w, height=fig_h, res=fig_res)
+png(here(paste0('figures/fig_', fig_ind, '_curve_BFmed_BLW.png')), units="in", width= fig_w, height=fig_h, res=fig_res)
 plot(ps1 + plot_layout(heights = c(2,1,1,1,1)))
 dev.off()
 
-tiff(here('figures/NHST/spec_curve_postCS_start_BF.tiff'), units="in", width=fig_w, height=fig_h, res=fig_res)
+png(here(paste0('figures/fig_', fig_ind, '_curve_BFmed_PDW_start.png')), units="in", width=fig_w, height=fig_h, res=fig_res)
 plot(ps2 + plot_layout(heights = c(2,1,1,1,1)))
 dev.off()
 
-tiff(here('figures/NHST/spec_curve_postCS_end_BF.tiff'), units="in", width=fig_w, height=fig_h, res=fig_res)
+png(here(paste0('figures/fig_', fig_ind, '_curve_BFmed_PDW_end.png')), units="in", width=fig_w, height=fig_h, res=fig_res)
 plot(ps3 + plot_layout(heights = c(2,1,1,1,1)))
 dev.off()
 
-tiff(here('figures/NHST/spec_curve_meanMax_BF.tiff'), units="in", width=fig_w, height=fig_h, res=fig_res)
+png(here(paste0('figures/fig_', fig_ind, '_curve_BFmed_fun.png')), units="in", width=fig_w, height=fig_h, res=fig_res)
 plot(ps4 + plot_layout(heights = c(2,1,1,1,1)))
 dev.off()
 }
@@ -637,9 +634,24 @@ dev.off()
 #p_spec_curvesBF
 ```
 
+Save dataframes
+
+```{r save-res-nhst-bf}
+
+if (save_dat == 'yes'){
+ save(res_ttest_d, file = here('data_stats/results_ttest_nhst.Rdata')) 
+ save(res_tBF, file = here('data_stats/results_ttest_bf.Rdata'))
+ save(results_BF_effsize, file = here('data_stats/results_ttest_eff_bf.Rdata'))
+  
+}
+```
+
 One figure without color is saved to put in manuscript. Color scaled figures combined as gif are for the supplement or online available electronic material.
 
-```{r}
+```{r extract-values-description}
 # get some statistics
 min(results_BF_effsize$BF_ln)
+
+min(results_BF_effsize$effsize)
+max(results_BF_effsize$effsize)
 ```
