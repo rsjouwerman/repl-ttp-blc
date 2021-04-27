@@ -218,7 +218,8 @@ p_kA
 What is the range of Krippendorff's values?
 
 ```{r}
-
+min(ka_df$kaZ_rank)
+max(ka_df$kaZ_rank)
 ```
 
 #### Pairwise (i.e, approach wise) comparisons of Krippendorff's alpha
