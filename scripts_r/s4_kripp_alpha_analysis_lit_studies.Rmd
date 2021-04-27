@@ -104,7 +104,7 @@ Krippendorff's alpha from the irr package gives approximately the same values as
 source(here('files/Zapf_Krip_alpha_function.R'))
 
 # set number of bootstrapping, should be 1000, but reduce for testing code
-n_boots <- 2
+n_boots <- 50
 save_dat <- 'yes'
 save_fig <- 'yes'
 fig_ind <- 2
@@ -188,6 +188,12 @@ p_kA <- ggplot(ka_df, aes(x = kaZ_rank, y = trial, color = stimType)) +
                               'US_1' = '1', 'US_14' = '14'), 
                    breaks = c('CS_M_1', 'CS_M_14', 'CS_P_1', 'CS_P_14',
                               'US_1', 'US_14')) +
+  # add benchmarks
+  geom_vline(xintercept = c(.4, .6, .8), linetype = 'longdash') +
+  # add label for benchmarks
+  annotate('text', x = .45, y = 42, label = 'fair') +
+  annotate('text', x = .65, y = 42, label = 'moderate') +
+  annotate('text', x = .85, y = 42, label = 'perfect') +
   theme_classic() +
   theme(text = element_text(size=28), 
         legend.position = c(.15, .95)) 
@@ -319,6 +325,8 @@ for (ind in 1:45){
                               'US_1' = '1','US_14' = '14'), 
                    breaks = c('CS_M_1','CS_M_14','CS_P_1','CS_P_14',
                               'US_1','US_14')) +
+    # add benchmarks
+  geom_vline(xintercept = c(.4, .6, .8), linetype = 'longdash') +
    scale_x_continuous(n.breaks = 3, limits = c(-1,1)) +
    ggtitle(paste0(df_temp$app_x[1], ' vs ', df_temp$app_y[1])) +
    xlab(x_lab) +
@@ -362,43 +370,43 @@ dev.off()
  plot_combined <- grid.arrange(grobs = plot_list_2, layout_matrix = plot_mat_2)
 
  
- # try with patchwork
-  layout_area <- c(
-   area(t = 1, l = 2),
-    area(t = 1, l = 3),
-   area(t = 1, l = 4),
-   area(t = 1, l = 5),
-   area(t = 1, l = 6),
-   area(t = 1, l = 7),
-   area(t = 1, l = 8),
-   area(t = 1, l = 9),
-   area(t = 1, l = 10), 
-   
-    area(t = 2, l = 3),
-   area(t = 2, l = 4),
-   area(t = 2, l = 5),
-   area(t = 2, l = 6),
-   area(t = 2, l = 7),
-   area(t = 2, l = 8),
-   area(t = 2, l = 9),
-   area(t = 2, l = 10)
-)
-  
-  plot(layout_area)
- 
- plot_ind_1 + plot_ind_2 + plot_ind_3 + plot_ind_4 + plot_ind_5 + plot_ind_6 + plot_ind_7 + plot_ind_8 + plot_ind_9 +
-   
-    plot_ind_10 + plot_ind_11 + plot_ind_12 + plot_ind_13 + plot_ind_14 + plot_ind_15 + plot_ind_16 + plot_ind_17 + 
-  plot_layout(design = layout_area) 
-  
-  
- # try with patchwork
- layout_area <- c(
-   area(t = 1, l = 2, b = 10, r = 10),
-    area(t = 5, l = 1, b = 10, r = 5)
-)
-plot_upp_tri + p_kA + 
-  plot_layout(design = layout_area)
+#  # try with patchwork
+#   layout_area <- c(
+#    area(t = 1, l = 2),
+#     area(t = 1, l = 3),
+#    area(t = 1, l = 4),
+#    area(t = 1, l = 5),
+#    area(t = 1, l = 6),
+#    area(t = 1, l = 7),
+#    area(t = 1, l = 8),
+#    area(t = 1, l = 9),
+#    area(t = 1, l = 10), 
+#    
+#     area(t = 2, l = 3),
+#    area(t = 2, l = 4),
+#    area(t = 2, l = 5),
+#    area(t = 2, l = 6),
+#    area(t = 2, l = 7),
+#    area(t = 2, l = 8),
+#    area(t = 2, l = 9),
+#    area(t = 2, l = 10)
+# )
+#   
+#   plot(layout_area)
+#  
+#  plot_ind_1 + plot_ind_2 + plot_ind_3 + plot_ind_4 + plot_ind_5 + plot_ind_6 + plot_ind_7 + plot_ind_8 + plot_ind_9 +
+#    
+#     plot_ind_10 + plot_ind_11 + plot_ind_12 + plot_ind_13 + plot_ind_14 + plot_ind_15 + plot_ind_16 + plot_ind_17 + 
+#   plot_layout(design = layout_area) 
+#   
+#   
+#  # try with patchwork
+#  layout_area <- c(
+#    area(t = 1, l = 2, b = 10, r = 10),
+#     area(t = 5, l = 1, b = 10, r = 5)
+# )
+# plot_upp_tri + p_kA + 
+#   plot_layout(design = layout_area)
  
  # save plot
 if (save_fig == 'yes'){
@@ -421,101 +429,101 @@ Next, we will evaluated whether the effect of CS discrimination is different whe
 Sabrina used the criteria from 12 studies in the literature so far. Here the criteria are not systematically varied, and only include a subset of all possibilities. For, illustration, I'll conduct the analysis as far as possible with that subset of data.
 
 ```{r}
-# add columns with criterium specifics to the approaches to long data
-head(dat)
-
-# pre CS time window
-dat[dat$approach %in% 1:3,'preCS'] <- 1
-dat[dat$approach %in% 4:8,'preCS'] <- 2
-dat[dat$approach %in% 9,'preCS'] <- 4
-dat[dat$approach %in% 10,'preCS'] <- 10
-dat[dat$approach %in% 11:12,'preCS'] <- 0
-
-# start post CS time window
-dat[dat$approach %in% c(3,7,8,10),'postCS_on'] <- 0
-dat[dat$approach %in% c(6),'postCS_on'] <- 0.5
-dat[dat$approach %in% c(1,5),'postCS_on'] <- 1
-dat[dat$approach %in% c(2,9),'postCS_on'] <- 2
-dat[dat$approach %in% c(4),'postCS_on'] <- 3
-dat[dat$approach %in% c(11,12),'postCS_on'] <- 0.9 # TTP, prob doesnt make sense
-
-# end post CS time window
-dat[dat$approach %in% c(6),'postCS_off'] <- 4.5
-dat[dat$approach %in% c(1,3),'postCS_off'] <- 5
-dat[dat$approach %in% c(4),'postCS_off'] <- 6
-dat[dat$approach %in% c(2,8),'postCS_off'] <- 7
-dat[dat$approach %in% c(5,9),'postCS_off'] <- 8
-dat[dat$approach %in% c(10),'postCS_off'] <- 10
-dat[dat$approach %in% c(7),'postCS_off'] <- 12
-dat[dat$approach %in% c(11,12),'postCS_off'] <- 4 # TTP, prob doesnt make sense
-
-# add variable approach type: BC vs TTP
-dat$approach_type <- 'BC'
-dat[dat$approach %in% 11:12,'approach_type'] <- 'TTP'
-dat$approach_type <- as.factor(dat$approach_type)
-```
-
-```{r}
-# now construct linear model
-lm_1 <- lmer(scr_log_r ~ preCS * postCS_on * postCS_off + (1 | id), dat)
-# using lmertest makes a huge difference here, changes significance, have to look into that what to use
-summary(lm_1)
-anova(lm_1)
-
-lm_2 <- lmer(scr_log_r ~ approach_type + (1| id),dat)
-
-# simple rm anova, check contrasts and type (2 or 3)
-aovRM <-  aov(scr_log_r ~preCS*postCS_on*postCS_off + Error(id), dat)
-summary(aovRM)
-
-aovRM_2 <-  aov(scr_log_r ~ approach + Error(id), dat)
-summary(aovRM_2)
-
-aovRM_3 <-  aov(scr_log_r ~ approach_type + Error(id), dat)
-summary(aovRM_3)
-```
-
-```{r}
-# try some plotting
-#library(emmeans)
-#emmeans(lm_1, list(pairwise ~ preCS ), adjust = "tukey")
-
-ggplot(dat, aes(x = preCS, y = scr_log_r, group = preCS)) +
-  geom_boxplot()
-
-ggplot(dat, aes(x = postCS_on, y = scr_log_r, group = postCS_on)) +
-  geom_boxplot()
-
-ggplot(dat, aes(x = postCS_off, y = scr_log_r, group = postCS_on)) +
-  geom_boxplot()
-
-ggplot(dat, aes(x = approach_type, y = scr_log_r)) +
-  geom_boxplot()
-
-ggplot(dat, aes(x = approach, y = scr_log_r)) +
-  geom_boxplot()
-
-# non log and range corrected data
-ggplot(dat, aes(x = preCS, y = scr, group = preCS)) +
-  geom_boxplot()
-
-ggplot(dat, aes(x = postCS_on, y = scr, group = postCS_on)) +
-  geom_boxplot()
-
-ggplot(dat, aes(x = postCS_off, y = scr, group = postCS_on)) +
-  geom_boxplot()
-
-ggplot(dat, aes(x = approach_type, y = scr)) +
-  geom_boxplot()
-
-ggplot(dat, aes(x = approach, y = scr)) +
-  geom_boxplot()
-
-
+# # add columns with criterium specifics to the approaches to long data
+# head(dat)
 # 
-ggplot(data.frame(dat[dat$id %in% 1:2 & dat$number_cs == 1,]), aes(x = approach, y = scr_log_r,color = cs)) +
-  geom_point() +
-  geom_line(aes(group = id))
+# # pre CS time window
+# dat[dat$approach %in% 1:3,'preCS'] <- 1
+# dat[dat$approach %in% 4:8,'preCS'] <- 2
+# dat[dat$approach %in% 9,'preCS'] <- 4
+# dat[dat$approach %in% 10,'preCS'] <- 10
+# dat[dat$approach %in% 11:12,'preCS'] <- 0
+# 
+# # start post CS time window
+# dat[dat$approach %in% c(3,7,8,10),'postCS_on'] <- 0
+# dat[dat$approach %in% c(6),'postCS_on'] <- 0.5
+# dat[dat$approach %in% c(1,5),'postCS_on'] <- 1
+# dat[dat$approach %in% c(2,9),'postCS_on'] <- 2
+# dat[dat$approach %in% c(4),'postCS_on'] <- 3
+# dat[dat$approach %in% c(11,12),'postCS_on'] <- 0.9 # TTP, prob doesnt make sense
+# 
+# # end post CS time window
+# dat[dat$approach %in% c(6),'postCS_off'] <- 4.5
+# dat[dat$approach %in% c(1,3),'postCS_off'] <- 5
+# dat[dat$approach %in% c(4),'postCS_off'] <- 6
+# dat[dat$approach %in% c(2,8),'postCS_off'] <- 7
+# dat[dat$approach %in% c(5,9),'postCS_off'] <- 8
+# dat[dat$approach %in% c(10),'postCS_off'] <- 10
+# dat[dat$approach %in% c(7),'postCS_off'] <- 12
+# dat[dat$approach %in% c(11,12),'postCS_off'] <- 4 # TTP, prob doesnt make sense
+# 
+# # add variable approach type: BC vs TTP
+# dat$approach_type <- 'BC'
+# dat[dat$approach %in% 11:12,'approach_type'] <- 'TTP'
+# dat$approach_type <- as.factor(dat$approach_type)
+```
+
+```{r}
+# # now construct linear model
+# lm_1 <- lmer(scr_log_r ~ preCS * postCS_on * postCS_off + (1 | id), dat)
+# # using lmertest makes a huge difference here, changes significance, have to look into that what to use
+# summary(lm_1)
+# anova(lm_1)
+# 
+# lm_2 <- lmer(scr_log_r ~ approach_type + (1| id),dat)
+# 
+# # simple rm anova, check contrasts and type (2 or 3)
+# aovRM <-  aov(scr_log_r ~preCS*postCS_on*postCS_off + Error(id), dat)
+# summary(aovRM)
+# 
+# aovRM_2 <-  aov(scr_log_r ~ approach + Error(id), dat)
+# summary(aovRM_2)
+# 
+# aovRM_3 <-  aov(scr_log_r ~ approach_type + Error(id), dat)
+# summary(aovRM_3)
+```
+
+```{r}
+# # try some plotting
+# #library(emmeans)
+# #emmeans(lm_1, list(pairwise ~ preCS ), adjust = "tukey")
+# 
+# ggplot(dat, aes(x = preCS, y = scr_log_r, group = preCS)) +
+#   geom_boxplot()
+# 
+# ggplot(dat, aes(x = postCS_on, y = scr_log_r, group = postCS_on)) +
+#   geom_boxplot()
+# 
+# ggplot(dat, aes(x = postCS_off, y = scr_log_r, group = postCS_on)) +
+#   geom_boxplot()
+# 
+# ggplot(dat, aes(x = approach_type, y = scr_log_r)) +
+#   geom_boxplot()
+# 
+# ggplot(dat, aes(x = approach, y = scr_log_r)) +
+#   geom_boxplot()
+# 
+# # non log and range corrected data
+# ggplot(dat, aes(x = preCS, y = scr, group = preCS)) +
+#   geom_boxplot()
+# 
+# ggplot(dat, aes(x = postCS_on, y = scr, group = postCS_on)) +
+#   geom_boxplot()
+# 
+# ggplot(dat, aes(x = postCS_off, y = scr, group = postCS_on)) +
+#   geom_boxplot()
+# 
+# ggplot(dat, aes(x = approach_type, y = scr)) +
+#   geom_boxplot()
+# 
+# ggplot(dat, aes(x = approach, y = scr)) +
+#   geom_boxplot()
+# 
+# 
+# # 
+# ggplot(data.frame(dat[dat$id %in% 1:2 & dat$number_cs == 1,]), aes(x = approach, y = scr_log_r,color = cs)) +
+#   geom_point() +
+#   geom_line(aes(group = id))
 ```
 
 #### Case example: potential pitfalls
