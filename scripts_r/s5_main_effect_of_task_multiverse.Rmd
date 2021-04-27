@@ -1,7 +1,7 @@
 ---
 title: "BC test main effect of task"
 author: "Rachel Sjouwerman"
-date: "11 2 2021"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: html_document
 ---
 
@@ -54,8 +54,8 @@ Description of the variables in this dataset can be found in: \_\_\_\_R_codebook
 
 ## Prepare data
 
-```{r Read in TTP data}
-load(here('data/TTP2_Claudi_SCR118_PostProcess.Rdata'))
+```{r read-data-TTP}
+load(here::here('data/TTP2_Claudi_SCR118_PostProcess.Rdata'))
 
 dat_TTP <- claudi
 rm(claudi)
@@ -79,13 +79,13 @@ dat_TTP[,cols_to_factor] <- lapply(dat_TTP[,cols_to_factor], as.factor)
 dat_TTP$stimType <- relevel(dat_TTP$stimType, 'csp')
 ```
 
-```{r Read in data}
+```{r read-data-multiverse}
 # read in data with parameters for baseline corrections
 # file includes X approaches with scr data per trial (14 CS+, 14 CS-, 14 US)
 # possibly i still have habituation trials in here. Pls check.
 # data is not log transformed or range corrected
 
-#120 approaches --> now 200 approaches
+#120 approaches --> now 200 approaches --> 150 approaches (BLW 4s will be rm (yoshiiki))
 #dat <- read.csv(here('data/baseline_corrected_m1_all_subjects.csv'), header = FALSE)
 # full data multiverse
 dat <- read.csv(here::here('data/baseline_corrected_multiverse_all_subjects.csv'), header = FALSE)
@@ -103,8 +103,9 @@ dat[dat$stimulus_type == 999,'stimType'] <- 'us'
 dat <- dat[,-7]
 
 # remove approaches with BW 3s
+# remove approaches with BW 4s (yoshiiki)
 dat <- dat %>% 
-  filter(preCS != 3000) %>%
+  filter(! preCS %in% c(3000, 4000)) %>%
   droplevels()
 
 # change trial, remove habituation
@@ -122,7 +123,7 @@ dat[,cols_to_factor] <- lapply(dat[,cols_to_factor], as.factor)
 
 # add approach variable
 dat <- dat %>%
-  mutate(approach = factor(paste(preCS,postCS_start, postCS_end,max1mean0, sep ='_')))
+  mutate(approach = factor(paste(preCS,postCS_start, postCS_end, max1mean0, sep ='_')))
 
 # make csp first factor level
 dat$stimType <- relevel(dat$stimType, 'csp')
