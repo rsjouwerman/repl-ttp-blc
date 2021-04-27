@@ -36,7 +36,7 @@ knitr::opts_chunk$set(
 
 ```{r Read in data}
 # read in Sabrina's data
-# file includes 12 approaches with scr data per trial (14 CS+, 14 CS-, 14 US)
+# file includes 12 approaches (10 BLC, 2 TTP) with scr data per trial (14 CS+, 14 CS-, 14 US)
 # data is not log transformed nor range corrected
 #dat <- read.csv(here('data/raw_apps_long.csv'))
 load(here('data/dfcomplete.Rdata'))
@@ -114,11 +114,11 @@ y_lab <- 'fear acquisition training trial'
 
 First, we will look at the reliability between all (i.e., 9) BLC approaches, excluding TTP.
 
-```{r Estimate reliability by Krippendorff}
+```{r estimate-reliability-krippendorff-avg}
 Sys.time()
 # loop through dataframes that only contain one trial (ie.unique cs type and number)
 
-# remove TTP approache (i.e, 10) from dat: approach %in% 1:9
+# remove TTP approach (i.e, 10) from dat: approach %in% 1:9
 # remove approach 9 (i.e, SCL) for visualisation: approach %in% 1:8 for suppl
 dat <- dat %>%
   filter(approach %in% 1:9) %>%
@@ -221,6 +221,120 @@ What is the range of Krippendorff's values?
 min(ka_df$kaZ_rank)
 max(ka_df$kaZ_rank)
 ```
+
+### Krippendorff average excluding SCL, i.e., only SCR
+
+Compute Krippendorff estimates for only SCR BLC approaches, in other words excluding the approach that focussed on SCL, i.e, approach BLC 9. This information will be presented in the supplement.
+
+```{r estimate-reliability-krippendorff-avg-SCR}
+Sys.time()
+# loop through dataframes that only contain one trial (ie.unique cs type and number)
+
+# remove TTP approach (i.e, 10) from dat: approach %in% 1:9
+# remove approach 9 (i.e, SCL) for visualisation: approach %in% 1:8 for suppl
+dat <- dat %>%
+  filter(approach %in% 1:8) %>%
+  droplevels()
+
+# split into different dataframes
+# 42 acquistition trials
+dat_split_per_trial <- dat %>%
+  select(id, approach, cs, number_cs, scr) %>% # changed this to scr instead of scr_log_r
+  group_split(cs,number_cs)
+
+# build dataframe for extracted data
+ka_df_SCR <- data.frame(trial = NA,
+                    kaZ_rank = NA, 
+                    kaZ_rank_lc = NA,
+                    kaZ_rank_uc = NA)
+
+# loop through 42 trials (118 subjects * 9 methods = 1380 observations per df)
+for (ind in 1:42){
+  df <- dat_split_per_trial[[ind]] # trial 1, csm
+  
+  # dataframe for kripp alpha function from Zapf et al 2016
+  df_2 <- df %>% pivot_wider(names_from = approach, values_from = scr, names_prefix = 'approach') %>% # changed this to scr instead of scr_log_r
+    select(-c(id,cs,number_cs)) %>%
+    as.matrix()
+  
+  # compute, note nboot is 10 statt 1000, sonst dauert das ewig!
+  k_zapf_rank <- k_alpha(df_2, scaling = 'ordinal', nboot = n_boots)
+  
+  # print(paste(df$cs[1], df$number_cs[1], sep = '_'))
+  ka_df_SCR[ind,'cs'  ] <-  df$cs[1]
+  ka_df_SCR[ind,'trial'  ] <-  paste(df$cs[1], df$number_cs[1], sep = '_')
+  ka_df_SCR[ind, 'kaZ_rank'] <- k_zapf_rank$est.alpha
+  ka_df_SCR[ind, 'kaZ_rank_lc'] <- k_zapf_rank$ci.boot.alpha[1]
+  ka_df_SCR[ind, 'kaZ_rank_uc'] <- k_zapf_rank$ci.boot.alpha[2]
+  
+}
+#print values , does the fucntion kable() work here?           
+kable(ka_df_SCR) 
+
+Sys.time()
+```
+
+```{r update-str-df-ka-avg-SCR}
+# update structure of ka_df
+ka_df_SCR$trial <- factor(ka_df_SCR$trial, levels = ka_df_SCR$trial)
+ka_df_SCR$stimType <- sub('_([^_]*)$','', ka_df_SCR$trial)
+```
+
+```{r save-ka-avg}
+if (save_dat == 'yes'){
+ save(ka_df_SCR, file = here('data_stats/krippalph_BLC_lit_avg_SCR.Rdata')) 
+}
+```
+
+```{r build-plot-ka-avg-SCR}
+# plot
+p_kA_SCR <- ggplot(ka_df_SCR, aes(x = kaZ_rank, y = trial, color = stimType)) +
+  geom_point(aes(x = kaZ_rank),size = 5) +
+  geom_errorbarh(aes(xmin = kaZ_rank_lc, xmax = kaZ_rank_uc), height = 0, size = 1.5) +
+  scale_color_manual(name = NULL, values = c('blue','red','black'), labels = c('CS -', 'CS +', 'US'), guide = guide_legend(reverse=TRUE)) +
+  xlim(0,1) +
+  xlab(x_lab) +
+  ylab(y_lab) +
+  scale_y_discrete(labels = c('CS_M_1' = '1', 'CS_M_14' = '14',
+                              'CS_P_1' = '1', 'CS_P_14' = '14',
+                              'US_1' = '1', 'US_14' = '14'), 
+                   breaks = c('CS_M_1', 'CS_M_14', 'CS_P_1', 'CS_P_14',
+                              'US_1', 'US_14')) +
+  # add benchmarks
+  geom_vline(xintercept = c(.4, .6, .8), linetype = 'longdash') +
+  # add label for benchmarks
+  annotate('text', x = .45, y = 42, label = 'fair') +
+  annotate('text', x = .65, y = 42, label = 'moderate') +
+  annotate('text', x = .85, y = 42, label = 'perfect') +
+  theme_classic() +
+  theme(text = element_text(size=28), 
+        legend.position = c(.15, .95)) 
+```
+
+```{r save-ka-avg-plot}
+# save fig
+if (save_fig == 'yes'){
+png(here(paste0('figures/fig_', fig_ind, '_krippalph_BLC_lit_avg_SCR.png')), units="in", width=16, height=12, res=300)
+plot(p_kA_SCR)
+dev.off()
+
+}
+```
+
+Krippendorff's alpha averaged over all BLC approaches:
+
+```{r plot-ka-avg-SCR}
+p_kA_SCR
+```
+
+What is the range of Krippendorff's values?
+
+```{r}
+min(ka_df_SCR$kaZ_rank)
+max(ka_df_SCR$kaZ_rank)
+```
+
+#### 
 
 #### Pairwise (i.e, approach wise) comparisons of Krippendorff's alpha
 
