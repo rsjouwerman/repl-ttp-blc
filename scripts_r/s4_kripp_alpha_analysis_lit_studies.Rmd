@@ -215,6 +215,12 @@ Krippendorff's alpha averaged over all BLC approaches:
 p_kA
 ```
 
+What is the range of Krippendorff's values?
+
+```{r}
+
+```
+
 #### Pairwise (i.e, approach wise) comparisons of Krippendorff's alpha
 
 ```{r estimate-ka-pairwise}
@@ -359,58 +365,39 @@ dev.off()
 }
 ```
 
-```{r}
-# # try with matrix
- plot_list_2 <- c(plot_list, list(p_kA))
- #plot_mat_2 <- matrix(nrow = 10, ncol = 10, data = 46)
- #plot_mat_2 <- cbind(plot_mat_2,plot_mat)
- 
- plot_mat_2 <- plot_mat
- plot_mat_2[6:10,1:5] <- 46
- plot_combined <- grid.arrange(grobs = plot_list_2, layout_matrix = plot_mat_2)
+```{r arrange-ka-plots}
+# arrangement with patchwork
 
- 
-#  # try with patchwork
-#   layout_area <- c(
-#    area(t = 1, l = 2),
-#     area(t = 1, l = 3),
-#    area(t = 1, l = 4),
-#    area(t = 1, l = 5),
-#    area(t = 1, l = 6),
-#    area(t = 1, l = 7),
-#    area(t = 1, l = 8),
-#    area(t = 1, l = 9),
-#    area(t = 1, l = 10), 
-#    
-#     area(t = 2, l = 3),
-#    area(t = 2, l = 4),
-#    area(t = 2, l = 5),
-#    area(t = 2, l = 6),
-#    area(t = 2, l = 7),
-#    area(t = 2, l = 8),
-#    area(t = 2, l = 9),
-#    area(t = 2, l = 10)
-# )
-#   
-#   plot(layout_area)
-#  
-#  plot_ind_1 + plot_ind_2 + plot_ind_3 + plot_ind_4 + plot_ind_5 + plot_ind_6 + plot_ind_7 + plot_ind_8 + plot_ind_9 +
-#    
-#     plot_ind_10 + plot_ind_11 + plot_ind_12 + plot_ind_13 + plot_ind_14 + plot_ind_15 + plot_ind_16 + plot_ind_17 + 
-#   plot_layout(design = layout_area) 
-#   
-#   
-#  # try with patchwork
-#  layout_area <- c(
-#    area(t = 1, l = 2, b = 10, r = 10),
-#     area(t = 5, l = 1, b = 10, r = 5)
-# )
-# plot_upp_tri + p_kA + 
-#   plot_layout(design = layout_area)
- 
+# make list of all plots to be plotted
+ plot_list_2 <- c(plot_list, list(p_kA))
+
+ # build index of letters for layout of design "matrix"
+ letter_ind <- c(rbind(letters[1:26], LETTERS[1:26]))
+
+# hashtags are white space
+design <- paste0(paste(letter_ind[1:9], collapse = ''), 
+                 '\n', '#', paste(letter_ind[10:17], collapse = ''),
+                 '\n', '##', paste(letter_ind[18:24], collapse = ''),
+                 '\n', '###', paste(letter_ind[25:30], collapse = ''),
+                 '\n', paste(rep(letter_ind[46], 4), collapse = ''), paste(letter_ind[31:35], collapse = ''),
+                 '\n', paste(rep(letter_ind[46], 4), collapse = ''), '#', paste(letter_ind[36:39], collapse = ''),
+                 '\n', paste(rep(letter_ind[46], 4), collapse = ''), '##', paste(letter_ind[40:42], collapse = ''),
+                 '\n', paste(rep(letter_ind[46], 4), collapse = ''), '###', paste(letter_ind[43:44], collapse = ''),
+                 '\n', paste(rep(letter_ind[46], 4), collapse = ''), '####', paste(letter_ind[45], collapse = ''))
+
+# plot and add labels
+plot_combined <-  wrap_plots(plot_list_2, design = design) +
+  plot_layout(tag_level = 'new') +
+  plot_annotation(tag_levels = list(c('B', rep('', 44), 'A')))
+
+
+
+```
+
+```{r save-ka-combi-plot}
  # save plot
 if (save_fig == 'yes'){
-png(here(paste0('figures/fig_', fig_ind, '_krippalpha.png')), units="in", width=14, height=12, res=300, bg = 'white')
+png(here(paste0('figures/fig_', fig_ind, '_krippalpha.png')), units="in", width=14, height=12, res=300)
 plot(plot_combined)
 dev.off()
 }
