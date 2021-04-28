@@ -104,7 +104,7 @@ Krippendorff's alpha from the irr package gives approximately the same values as
 source(here('files/Zapf_Krip_alpha_function.R'))
 
 # set number of bootstrapping, should be 1000, but reduce for testing code
-n_boots <- 50
+n_boots <- 100
 save_dat <- 'yes'
 save_fig <- 'yes'
 fig_ind <- 2
@@ -280,7 +280,7 @@ ka_df_SCR$trial <- factor(ka_df_SCR$trial, levels = ka_df_SCR$trial)
 ka_df_SCR$stimType <- sub('_([^_]*)$','', ka_df_SCR$trial)
 ```
 
-```{r save-ka-avg}
+```{r save-ka-avg-SCR}
 if (save_dat == 'yes'){
  save(ka_df_SCR, file = here('data_stats/krippalph_BLC_lit_avg_SCR.Rdata')) 
 }
@@ -311,7 +311,7 @@ p_kA_SCR <- ggplot(ka_df_SCR, aes(x = kaZ_rank, y = trial, color = stimType)) +
         legend.position = c(.15, .95)) 
 ```
 
-```{r save-ka-avg-plot}
+```{r save-ka-avg-plot-SCR}
 # save fig
 if (save_fig == 'yes'){
 png(here(paste0('figures/fig_', fig_ind, '_krippalph_BLC_lit_avg_SCR.png')), units="in", width=16, height=12, res=300)
