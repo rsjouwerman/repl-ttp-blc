@@ -205,7 +205,7 @@ res_ttest_d[order(res_ttest_d$effsize),'approach_eff_order'] <-  1:nrow(res_ttes
 Run Bayesian t-test on all 150 BLC approaches and 1 TTP approach. Extract effect size for specification curve. Note that the effect size in fact represent something similar as when plotting the BFs. Because the Bayesian t-test tests whether the effect size is different from 0.
 
 ```{r ttest-Bayesian}
-n_its <- 1000000  # number of iterations, should this be 1000000?
+n_its <- 100000  # number of iterations, should this be 1000000? Then I run into problems, too big.
 res_tBF <- list(approach = NA, 
                 ttest_BF = NA,
                 ttest_BF_post = NA) 
@@ -639,9 +639,9 @@ Save dataframes
 ```{r save-res-nhst-bf}
 
 if (save_dat == 'yes'){
- save(res_ttest_d, file = here('data_stats/results_ttest_nhst.Rdata')) 
- save(res_tBF, file = here('data_stats/results_ttest_bf.Rdata'))
- save(results_BF_effsize, file = here('data_stats/results_ttest_eff_bf.Rdata'))
+ save(res_ttest_d, file = here::here('data_stats/results_ttest_nhst.Rdata')) 
+ #save(res_tBF, file = here::here('data_stats/results_ttest_bf.txt'))  # need to solve this 
+ save(results_BF_effsize, file = here::here('data_stats/results_ttest_eff_bf.Rdata'))
   
 }
 ```
