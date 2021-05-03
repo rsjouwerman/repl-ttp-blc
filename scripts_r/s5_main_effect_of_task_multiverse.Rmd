@@ -458,21 +458,27 @@ dev.off()
 
 Specification curve for Bayesian effect size.
 
+```{r add-method-to-df}
+results_BF_effsize$category <- as.factor(c(rep('BLC',150), 'TTP'))
+```
+
 ```{r plot-curves-BF}
 # labels
 x_lab <- 'approach number ordered by effect size'
-y_lab <- 'effect size (median BF)'
+y_lab <- expression(paste('effect size ', delta))
 
 # order by effect size
 # without color
 # note, I added a dummy color to make sure positions correspond to colored graphs, note II i again removed this and instead changed the margins
 p0 <- results_BF_effsize %>%
-  ggplot(aes(x = approach_eff_order, y = effsize)) +
+  ggplot(aes(x = approach_eff_order, y = effsize, color = category)) +
   geom_point() +
   geom_errorbar(aes(ymin = effsize_low, ymax =effsize_upp)) +
    theme_classic() +
    theme(text = element_text(size=size_text),
-               plot.margin = unit(c(25, 5.5, 5.5, 5.5), "point")) +
+           #    plot.margin = unit(c(25, 5.5, 5.5, 5.5), "point"),
+         legend.position = 'top') +
+  scale_color_manual(name = 'category',values = c('lightgrey', 'black')) +
   xlab(x_lab) +
   ylab(y_lab) 
 
@@ -609,23 +615,23 @@ if (save_fig == 'yes'){
 # plot(p_spec_curvesBF)
 # dev.off()
 
-png(here(paste0('figures/fig_', fig_ind, '_curve_BFmed.png')), units="in", width=fig_w, height=fig_h, res=fig_res)
+png(here::here(paste0('figures/fig_', fig_ind, '_curve_BFmed.png')), units="in", width=fig_w, height=fig_h, res=fig_res)
 plot(ps0 + plot_layout(heights = c(2,1,1,1,1)))
 dev.off()
 
-png(here(paste0('figures/fig_', fig_ind, '_curve_BFmed_BLW.png')), units="in", width= fig_w, height=fig_h, res=fig_res)
+png(here::here(paste0('figures/fig_', fig_ind, '_curve_BFmed_BLW.png')), units="in", width= fig_w, height=fig_h, res=fig_res)
 plot(ps1 + plot_layout(heights = c(2,1,1,1,1)))
 dev.off()
 
-png(here(paste0('figures/fig_', fig_ind, '_curve_BFmed_PDW_start.png')), units="in", width=fig_w, height=fig_h, res=fig_res)
+png(here::here(paste0('figures/fig_', fig_ind, '_curve_BFmed_PDW_start.png')), units="in", width=fig_w, height=fig_h, res=fig_res)
 plot(ps2 + plot_layout(heights = c(2,1,1,1,1)))
 dev.off()
 
-png(here(paste0('figures/fig_', fig_ind, '_curve_BFmed_PDW_end.png')), units="in", width=fig_w, height=fig_h, res=fig_res)
+png(here::here(paste0('figures/fig_', fig_ind, '_curve_BFmed_PDW_end.png')), units="in", width=fig_w, height=fig_h, res=fig_res)
 plot(ps3 + plot_layout(heights = c(2,1,1,1,1)))
 dev.off()
 
-png(here(paste0('figures/fig_', fig_ind, '_curve_BFmed_fun.png')), units="in", width=fig_w, height=fig_h, res=fig_res)
+png(here::here(paste0('figures/fig_', fig_ind, '_curve_BFmed_fun.png')), units="in", width=fig_w, height=fig_h, res=fig_res)
 plot(ps4 + plot_layout(heights = c(2,1,1,1,1)))
 dev.off()
 }
