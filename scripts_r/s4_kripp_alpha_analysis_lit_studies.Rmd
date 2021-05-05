@@ -20,6 +20,8 @@ library(lme4)               # for (mixed) linear models
 library(patchwork)          # for arranging and labeling plots
 library(tidyr)              # for swithing between long and wide format
 library(tidyverse)          # for matching string patterns
+
+#detach("package:plyr", unload=TRUE)
 ```
 
 ```{r chunk-options, include = FALSE}
@@ -202,7 +204,7 @@ p_kA <- ggplot(ka_df, aes(x = kaZ_rank, y = trial, color = stimType)) +
 ```{r save-ka-avg-plot}
 # save fig
 if (save_fig == 'yes'){
-png(here(paste0('figures/fig_', fig_ind, '_krippalph_BLC_lit_avg.png')), units="in", width=16, height=12, res=300)
+png(here::here(paste0('figures/fig_', fig_ind, '_krippalph_BLC_lit_avg.png')), units="in", width=16, height=12, res=300)
 plot(p_kA)
 dev.off()
 
@@ -217,9 +219,14 @@ p_kA
 
 What is the range of Krippendorff's values?
 
-```{r}
+```{r range-val}
 min(ka_df$kaZ_rank)
 max(ka_df$kaZ_rank)
+
+ka_df %>% dplyr::group_by(cs) %>%
+  dplyr::summarise(mean_est = mean(kaZ_rank),
+            min_est = min(kaZ_rank),
+            max_est = max(kaZ_rank))
 ```
 
 ### Krippendorff average excluding SCL, i.e., only SCR
@@ -422,6 +429,11 @@ if (save_dat == 'yes'){
 
 Now plot Kripp alpha for always two approaches separately for all stimulus types.
 
+```{r settings-plot}
+lim_x <- c(-1,1)  # most accurate
+lim_x <- c(-.3,1)  # for better data visualisation
+```
+
 ```{r build-plot-ka-pairwise}
 # rename approach 10 to TTP, to avoid confusion
 ka_df_pw[ka_df_pw$app_y == 10, 'app_y'] <- 'TTP'
@@ -448,7 +460,7 @@ for (ind in 1:45){
                               'US_1','US_14')) +
     # add benchmarks
   geom_vline(xintercept = c(.4, .6, .8), linetype = 'longdash') +
-   scale_x_continuous(n.breaks = 3, limits = c(-1,1)) +
+   scale_x_continuous(n.breaks = 3, limits = lim_x) +
    ggtitle(paste0(df_temp$app_x[1], ' vs ', df_temp$app_y[1])) +
    xlab(x_lab) +
    theme_classic() +
@@ -516,6 +528,22 @@ png(here(paste0('figures/fig_', fig_ind, '_krippalpha.png')), units="in", width=
 plot(plot_combined)
 dev.off()
 }
+```
+
+```{r pw-TTP-SCL-val}
+# update the type of variables in data
+cols_to_factor <- c('app_x', 'app_y')
+ka_df_pw[,cols_to_factor] <- lapply(ka_df_pw[,cols_to_factor], as.factor)
+
+# compute range for CS+, CS-, and US for pairwise comp SCL - TTP
+ka_df_pw %>% 
+  dplyr::filter(app_x == '9' & app_y == 'TTP') %>%
+  dplyr::group_by(stimType) %>%
+  dplyr::summarise(mean_est = mean(kaZ_rank),
+            min_est = min(kaZ_rank),
+            max_est = max(kaZ_rank)) %>%
+  kable(digits = 2)
+  
 ```
 
 ### Effect of baseline correction criteria on response
