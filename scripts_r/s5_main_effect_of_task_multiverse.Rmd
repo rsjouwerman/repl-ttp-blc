@@ -8,9 +8,11 @@ output: html_document
 ```{r setup, message = FALSE, warning = FALSE, echo = FALSE}
 
 library(BayesFactor)        # for Bayesian t testing
+library(bayestestR)         # for Bayesian CI
 library(colorspace)         # for colorpalettes
 library(dplyr)              # for easy data manipulation
 library(ggplot2)            # for plotting
+library(magick)             # for making a gif from saved images
 #library(glue)               # for gluing strings to data
 library(here)               # for file path
 #library(irr)                # for computing reliability between approaches
@@ -68,7 +70,7 @@ dat_TTP <- dat_TTP[c(1:3,5,8)]
 names(dat_TTP) <- c('id','stimType','trial','scr','scr_log_rc')
 
 # change names of factor levels for stimType
-dat_TTP$stimType <- revalue(dat_TTP$stimType, c(CSM = 'csm', CSP = 'csp', US = 'us'))
+dat_TTP$stimType <- plyr::revalue(dat_TTP$stimType, c(CSM = 'csm', CSP = 'csp', US = 'us'))
 
 detach(package:plyr, unload = T)
 
@@ -165,9 +167,9 @@ dat <- rbind(dat, dat_TTP)
 # remove first cs+ and first cs- trial (also first US trial)
 # compute acquisition means
 # note that if package plyr is loaded, this does not work properly!
-dat_acq_means <- dat %>% filter(trial != 1) %>%
-  group_by(id, stimType, postCS_start, postCS_end, preCS, max1mean0, approach) %>%
-  summarise(scr_mean = mean(scr, na.rm = T)) %>%
+dat_acq_means <- dat %>% dplyr::filter(trial != 1) %>%
+  dplyr::group_by(id, stimType, postCS_start, postCS_end, preCS, max1mean0, approach) %>%
+  dplyr::summarise(scr_mean = mean(scr, na.rm = T)) %>%
   data.frame()
 
 n_appr <- length(levels(dat_acq_means$approach))
@@ -175,7 +177,7 @@ n_appr <- length(levels(dat_acq_means$approach))
 
 ## Specification curve
 
-Run t-test on all 150 BLC approaches and 1 TTP approach. Display results (i.e., effect size) in specification curve.
+Run t-test on all 150 BLC approaches and 1 TTP approach. Display results (i.e., effect size) in specification curve. CHECK WHETHER I NEED TO MAKE THE DPLYR PACKAGE EXPLICIT; DOES IT INTERFERE WITH RSTATIX PACKAGE?
 
 ```{r ttest-NHST}
 # compute means, wide format
@@ -245,7 +247,7 @@ results_BF_effsize <- data.frame(approach = NA,
 for (ind in 1:n_appr){
   results_BF_effsize[ind, 'approach'] <- as.character(res_tBF$approach[ind])
   results_BF_effsize[ind, 'approach_num'] <- ind
-  # extract effect size cand 95% interval around effect size
+  # extract effect size and 95% interval around effect size
   results_BF_effsize[ind,'effsize'] <- median(res_tBF$ttest_BF_post[[ind]][,'delta'])
   # extract CI around estimate
   results_BF_effsize[ind, 'effsize_low'] <- summary(res_tBF$ttest_BF_post[[ind]])$quantiles['delta',][1]
@@ -269,14 +271,13 @@ Specification curve for regular pairwise t-test.
 # set colors for plotting
 # set colors
 clrs <- colorspace::sequential_hcl(n = 6, palette = 'Plasma')
-barplot(1:6, col=clrs)
 clrs <- c("#ffd700",
 "#fa8775",
 "#ea5f94",
 "#9d02d7",
 "#0000ff",
 "#413E3E")
-
+barplot(1:6, col=clrs)
 # set sizes 
 size_point <- 3  # lines in categories under spec curve
 size_text  <- 9 # text and ticks on x and y axis
@@ -293,7 +294,7 @@ labs_pdw_off <- c('4.5','5','6','7','8','TTP')
 
 ```
 
-```{r plot-curves}
+```{r plot-curves-NHST}
 # labels
 x_lab <- 'approach number ordered by effect size'
 y_lab <- 'effect size (Cohen\'s D)'
@@ -368,7 +369,7 @@ p4 <- res_ttest_d %>%
 
 ```
 
-```{r plot-spec}
+```{r plot-spec-NHST}
 # plot specifications of BC parameters
 s1 <- ggplot(res_ttest_d, aes(x = approach_eff_order, y = preCS, color = preCS)) +
   geom_point(shape = '|', size = size_point) +
@@ -413,8 +414,12 @@ s4 <- ggplot(res_ttest_d, aes(x = approach_eff_order, y = max1mean0, color = max
         panel.background = element_blank(),
         legend.position = 'none') +
   theme(text = element_text(size=size_text)) 
+```
 
-ps0 <- p0 / s1 / s2 / s3 / s4  
+```{r plot-spec-curves-NHST}
+ps0 <- (p0 + 
+          geom_hline(yintercept = max(res_ttest_d$effsize), linetype = 'dashed', color = 'red') + 
+          geom_hline(yintercept = min(res_ttest_d$effsize), linetype = 'dashed', color = 'red')) / s1 / s2 / s3 / s4  
 
 # plots for supplement, color coded
 ps1 <- p1 / (s1 +  scale_color_manual(values = clrs[c(-3,-4)])) / s2 / s3 / s4 
@@ -531,8 +536,12 @@ p4 <- results_BF_effsize %>%
   ylab(y_lab) + 
   guides(color = guide_legend(nrow = 1))
 
+max_median_est <- max(results_BF_effsize$effsize)
+min_median_est <- min(results_BF_effsize$effsize)  
 #p1 + p2 + p3 + p4
 ```
+
+The range in median BF effect sizes is between `r round(min_median_est,2)` and `r round(max_median_est,2)`
 
 ```{r plot-spec-BF}
 # plot specifications of BC parameters
@@ -583,7 +592,9 @@ s4 <- ggplot(results_BF_effsize, aes(x = approach_eff_order, y = max1mean0, colo
   theme(text = element_text(size = size_text)) +
   ylab('function') 
 
+```
 
+```{r plot-spec-curve-BF}
 # s_all <- s1 / s2 / s3 / s4
 
 # p0 / s_all + plot_layout(heights = c(1,3))
@@ -593,7 +604,9 @@ s4 <- ggplot(results_BF_effsize, aes(x = approach_eff_order, y = max1mean0, colo
 
 #ps0 <- p0 / s_all + plot_layout(heights = c(1,3))
 ps0 <- p0 / s1 / s2 / s3 / s4  
-
+ps0 <- (p0 + 
+          geom_hline(yintercept = max(results_BF_effsize$effsize), linetype = 'dashed', color = 'red') + 
+          geom_hline(yintercept = min(results_BF_effsize$effsize), linetype = 'dashed', color = 'red')) / s1 / s2 / s3 / s4  
 # plots for supplement, color coded
 ps1 <- p1 / (s1 +  scale_color_manual(values = clrs[c(-3,-4)])) / s2 / s3 / s4 
 ps2 <- p2 / s1 / (s2 +  scale_color_manual(values = clrs)) / s3 / s4 
@@ -660,4 +673,38 @@ min(results_BF_effsize$BF_ln)
 
 min(results_BF_effsize$effsize)
 max(results_BF_effsize$effsize)
+```
+
+To make a gif:
+
+```{r make-gif-NHST}
+# make gif
+filenames <- list.files(here::here('figures/'), full.names = T, pattern = 'fig_3_curve_cohD')
+gif_n <- paste0(fig_ind, '_curve_cohD')
+gif_name <- here::here(paste0('figures/fig_', gif_n, '.gif'))
+m <- magick::image_read(filenames[1])
+for (im in c(2,5,4,3)){
+  m <- c(m, magick::image_read(filenames[im]))
+}
+# dispose could also be nothing because the img has no transparency, 
+# dispose means what happens to the img after its presentation
+m <- magick::image_animate(m, fps = 1, dispose = "previous")  
+magick::image_write(m, gif_name)
+
+```
+
+```{r make-gif-BF}
+# make gif
+filenames <- list.files(here::here('figures/'), full.names = T, pattern = 'fig_3_curve_BFmed')
+gif_n <- paste0(fig_ind, '_curve_BF')
+gif_name <- here::here(paste0('figures/fig_', gif_n, '.gif'))
+m <- magick::image_read(filenames[1])
+for (im in c(2,5,4,3)){
+  m <- c(m, magick::image_read(filenames[im]))
+}
+# dispose could also be nothing because the img has no transparency, 
+# dispose means what happens to the img after its presentation
+m <- magick::image_animate(m, fps = 1, dispose = "previous")  
+magick::image_write(m, gif_name)
+
 ```
