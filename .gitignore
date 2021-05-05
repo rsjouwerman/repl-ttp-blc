@@ -43,4 +43,7 @@ vignettes/*.pdf
 /data_stats
 /files
 /figures
+/presentation
+/res_server
 /scripts_m
+
