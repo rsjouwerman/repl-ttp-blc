@@ -12,7 +12,7 @@ library(dplyr)              # for easy data manipulation
 library(ggplot2)            # for plotting
 #library(glue)               # for gluing strings to data
 library(here)               # for file path
-library(irr)                # for computing reliability between approaches
+#library(irr)                # for computing reliability between approaches
 library(knitr)
 library(lme4)               # for (mixed) linear models
 #library(lmerTest)          # for obtaining sig of effects, detach(package:lmerTest, unload=TRUE)
@@ -170,7 +170,7 @@ y_lim <- c(0, 5000)
 x_lim <- c(-.85, 0.01)
 tit_max_panel <- 'SCR (PDW max)'
 tit_mean_panel <- 'SCL (PDW mean)'
-x_lab <- 'SCR < 0 based on BLC'
+x_lab <- 'SC < 0 based on BLC'
 ```
 
 ```{r plot-compute-SCR-neg}
@@ -243,7 +243,7 @@ hist_max <- ggplot(df_max, aes(x = scr, fill = stimType)) +
 
 ```
 
-`r perc_subs_neg`
+`r round(perc_subs_neg,2)` % of all subjects has at least one negative SCR value.
 
 ```{r plot-compute-SCL-neg}
 # for mean values
@@ -372,6 +372,10 @@ df$scr_binair <- ifelse(df$scr < 0, 'negative','positive')
 
 xtabs( ~ df$scr_binair + df$stimType)
 
+# das ist im Grunde ja nichts anderes als so, aufgesplittet für SCR und SCL:
+df %>%
+  xtabs(~ scr_binair + max1mean0 + stimType, data = .)
+
 # unterscheidet sich die häufigkeit negativer US rekationen pro mean oder max?
 # ist das so correct?
 df %>% filter(stimType == 'us') %>%
@@ -388,6 +392,19 @@ df %>% filter(stimType == 'csp') %>%
 # pro csm
 df %>% filter(stimType == 'csm') %>%
   xtabs( ~ scr_binair + max1mean0, data = .) %>%
+  chisq.test() %>%
+  apa::chisq_apa()
+
+
+# unterscheiden sich die häufigkeiten der stimulus typen innerhalb (SCR)
+df %>% filter(max1mean0 == 'max') %>%
+  xtabs( ~ scr_binair +stimType, data = .) %>%
+  chisq.test() %>%
+  apa::chisq_apa()
+
+# unterscheiden sich die häufigkeiten der stimulus typen innerhalb (SCL)
+df %>% filter(max1mean0 == 'mean') %>%
+  xtabs( ~ scr_binair +stimType, data = .) %>%
   chisq.test() %>%
   apa::chisq_apa()
 
@@ -466,7 +483,7 @@ df_TTP_max$stimType <- relevel(df_TTP_max$stimType, 'csm')
 df_TTP_mean$stimType <- relevel(df_TTP_mean$stimType, 'csm')
 
 # max
-x_lab_TTP <- 'SCR based on TTP for BLC SCR < 0'
+x_lab_TTP <- 'SCR based on TTP for BLC < 0'
 hist_max_TTP <- ggplot(df_TTP_max, aes(x = scr, fill = stimType)) +
   geom_histogram(binwidth = bin_w, alpha = .5, position = 'identity') +
   scale_fill_manual(values = clrs, breaks = c('csp','csm','us'), labels = c('CS +','CS -','US')) +
@@ -478,7 +495,7 @@ hist_max_TTP <- ggplot(df_TTP_max, aes(x = scr, fill = stimType)) +
 
 
 # mean
-x_lab_TTP <- 'SCR based on TTP for BLC SCR < 0'
+x_lab_TTP <- 'SCR based on TTP for BLC < 0'
 hist_mean_TTP <- ggplot(df_TTP_mean, aes(x = scr, fill = stimType)) +
   geom_histogram(binwidth = bin_w, alpha = .5, position = 'identity') +
   scale_fill_manual(values = clrs, breaks = c('csp','csm','us'), labels = c('CS +','CS -','US')) +
@@ -500,13 +517,30 @@ hist_max + hist_mean + hist_max_TTP + hist_mean_TTP +
 
 ```{r save-neg-SCR-SCL-BLC-TTP}
 if(save_fig == 'yes'){
-  png(here(paste0('figures/fig_', fig_ind, '_hist_neg_SCR_SCL_BLC_TTP.png')), units="in", width=8, height=6, res=300)
+  png(here::here(paste0('figures/fig_', fig_ind, '_hist_neg_SCR_SCL_BLC_TTP.png')), units="in", width=8, height=6, res=300)
   plot(hist_max + hist_mean + 
          hist_max_TTP + hist_mean_TTP + 
          plot_layout(guides = 'collect') + 
          plot_annotation(tag_levels = 'A'))
   dev.off()
 }
+```
+
+```{r stats-neg-SC-in-TTP}
+
+# SCL, do frequencies for stimulus types differ
+df_TTP_mean %>% filter(scr == 0) %>%
+  xtabs( ~ scr + stimType, data = .) %>%
+  chisq.test() %>%
+  apa::chisq_apa()
+
+# SCR, do frequencies for stimulus types differ
+df_TTP_max %>% filter(scr == 0) %>%
+  xtabs( ~ scr + stimType, data = .) %>%
+  chisq.test() %>%
+  apa::chisq_apa()
+
+
 ```
 
 Thus, what we can infer from these plots (based on these `r n_subs` participants) is that on trials where larger baseline values appear than the post CS values, that in many cases these are scored as zero responses in TTP, but there are also cases where this is not the case.
@@ -568,12 +602,12 @@ dev.off()
 
 ```{r regr-test}
 # RM anova
-anovaModelRM = aov(scr ~ preCS_Time*postCS_startTime*postCS_endTime*max1mean0 + Error(id), dat)
+anovaModelRM = aov(scr ~ preCS*postCS_start*postCS_end*max1mean0 + Error(id), dat)
 summary(anovaModelRM)
 
 
 # linear mixed model
-lmeModel = lmer(scr ~ preCS_Time*postCS_startTime*postCS_endTime*max1mean0 + (1|id), dat)
+lmeModel = lmer(scr ~ preCS*postCS_start*postCS_end*max1mean0 + (1|id), dat)
 anova(lmeModel)
 ```
 
