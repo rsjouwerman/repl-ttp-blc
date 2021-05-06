@@ -48,7 +48,7 @@ Description of the variables in this dataset can be found in: \_\_\_\_R_codebook
 ## Prepare data
 
 ```{r}
-save_fig <- 'yes'
+save_fig <- 'no'
 fig_ind <- 4
 ```
 
@@ -601,21 +601,40 @@ dev.off()
 ## Regression
 
 ```{r regr-test}
+# make fact of interest continuous
+dat_lm <- dat
+dat_lm$postCS_start <- as.numeric(as.character(dat_lm$postCS_start))/1000
+dat_lm$postCS_end <- as.numeric(as.character(dat_lm$postCS_end))/1000
+dat_lm$preCS <- as.numeric(as.character(dat_lm$preCS))/1000
+
 # RM anova
-anovaModelRM = aov(scr ~ preCS*postCS_start*postCS_end*max1mean0 + Error(id), dat)
+anovaModelRM <- aov(scr ~ preCS*postCS_start*postCS_end*max1mean0 + Error(id), dat)
 summary(anovaModelRM)
 
 
 # linear mixed model
-lmeModel = lmer(scr ~ preCS*postCS_start*postCS_end*max1mean0 + (1|id), dat)
+lmeModel <- lmer(scr ~ preCS*postCS_start*postCS_end*max1mean0 + (1|id), dat)
 anova(lmeModel)
+
+# linear mixed model for main effects only
+lmeModel_3 <- lmer(scr ~ preCS + postCS_start + postCS_end + max1mean0 + 
+                     preCS*stimType + postCS_start*stimType + postCS_end*stimType + max1mean0*stimType +(1|id), dat_lm)
+lmeModel_4 <- lmer(scr ~ preCS * postCS_start * postCS_end * max1mean0 * 
+                     stimType +(1|id), dat_lm)
+
+lmeModel_5 <- lmer(scr ~ preCS * postCS_start * postCS_end * max1mean0  +(1|id), dat_lm)
+
+
+lmeModel_6 <- lmer(scr ~ preCS *stimType + postCS_start * stimType + postCS_end * stimType + max1mean0 * stimType  +(1|id), dat_lm)
+
+anova(lmeModel_2)
 ```
 
 ```{r print-table-regr}
 tab_model(lmeModel)
+tab_model(lmeModel_2)
+tab_ind <- 4
+tab_model(lmeModel_4, file = here::here(paste0('tables/lme_table_',tab_ind)))
+tab_model(lmeModel_6)
 
 ```
-
-Negative drift? Response onset compared to post CS time window
-
-Multiple responses, Same peak? Compare onset of selected peak?
