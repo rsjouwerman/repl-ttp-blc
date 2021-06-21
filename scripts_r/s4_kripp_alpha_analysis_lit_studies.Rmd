@@ -543,7 +543,23 @@ ka_df_pw %>%
             min_est = min(kaZ_rank),
             max_est = max(kaZ_rank)) %>%
   kable(digits = 2)
+
+# compute mean and range for all pairwise comparisons
+ka_df_pw %>%
+  dplyr::group_by(app_x, app_y, stimType) %>%
+  dplyr::summarise(mean_est = mean(kaZ_rank),
+            min_est = min(kaZ_rank),
+            max_est = max(kaZ_rank)) %>%
+  kable(digits = 2)
   
+# compute mean and range for all pairwise comparisons; diff order
+tab_2 <- ka_df_pw %>%
+  dplyr::group_by(app_y, app_x, stimType) %>%
+  dplyr::summarise(mean_est = mean(kaZ_rank),
+            min_est = min(kaZ_rank),
+            max_est = max(kaZ_rank)) %>%
+  kable(digits = 2)
+
 ```
 
 ### Effect of baseline correction criteria on response
