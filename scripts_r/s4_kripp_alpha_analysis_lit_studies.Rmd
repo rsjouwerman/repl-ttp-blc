@@ -560,6 +560,25 @@ tab_2 <- ka_df_pw %>%
             max_est = max(kaZ_rank)) %>%
   kable(digits = 2)
 
+t_2 <- ka_df_pw %>%
+  dplyr::group_by(app_y, app_x, stimType) %>%
+  dplyr::summarise(mean_est = mean(kaZ_rank),
+            min_est = min(kaZ_rank),
+            max_est = max(kaZ_rank)) 
+
+# extract values for manuscript, SCL vs all other BLC approaches
+t_2 %>% filter(app_y == 9) %>%
+  group_by(stimType) %>%
+  summarise(mean_est = mean(mean_est),
+            min_est = min(min_est),
+            max_est = max(max_est))
+
+# extrract values for manuscript, TTP vs all  BLC approaches
+t_2 %>% filter(app_y == 'TTP') %>%
+  group_by(stimType) %>%
+  summarise(mean_est = mean(mean_est),
+            min_est = min(min_est),
+            max_est = max(max_est))
 ```
 
 ### Effect of baseline correction criteria on response
