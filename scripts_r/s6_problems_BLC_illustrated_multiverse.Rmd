@@ -607,6 +607,11 @@ dat_lm$postCS_start <- as.numeric(as.character(dat_lm$postCS_start))/1000
 dat_lm$postCS_end <- as.numeric(as.character(dat_lm$postCS_end))/1000
 dat_lm$preCS <- as.numeric(as.character(dat_lm$preCS))/1000
 
+#compute means for each subject per approach
+dat_lm_mean <- dat_lm %>% 
+  group_by(id, postCS_start, postCS_end, preCS, max1mean0, stimType) %>%
+  summarise(mean_scr = mean(scr, na.rm =T))
+
 # RM anova
 anovaModelRM <- aov(scr ~ preCS*postCS_start*postCS_end*max1mean0 + Error(id), dat)
 summary(anovaModelRM)
@@ -619,14 +624,21 @@ anova(lmeModel)
 # linear mixed model for main effects only
 lmeModel_3 <- lmer(scr ~ preCS + postCS_start + postCS_end + max1mean0 + 
                      preCS*stimType + postCS_start*stimType + postCS_end*stimType + max1mean0*stimType +(1|id), dat_lm)
+
+# allowing all interactions, incl stimulus type
 lmeModel_4 <- lmer(scr ~ preCS * postCS_start * postCS_end * max1mean0 * 
                      stimType +(1|id), dat_lm)
 
+# allowing all interactions
 lmeModel_5 <- lmer(scr ~ preCS * postCS_start * postCS_end * max1mean0  +(1|id), dat_lm)
 
-
+# allowing only 2 way interactions between parameter and stim type
 lmeModel_6 <- lmer(scr ~ preCS *stimType + postCS_start * stimType + postCS_end * stimType + max1mean0 * stimType  +(1|id), dat_lm)
 
+lmeModel_6b <- lmer(scr ~ preCS *stimType + postCS_start * stimType + postCS_end * stimType + max1mean0 * stimType  +(1 + trial |id), dat_lm)
+
+# allowing only 2 way interactions between parameter and stim type: MEANS
+lmeModel_7 <- lmer(mean_scr ~ preCS *stimType + postCS_start * stimType + postCS_end * stimType + max1mean0 * stimType  +(1|id), dat_lm_mean)
 anova(lmeModel_2)
 ```
 
