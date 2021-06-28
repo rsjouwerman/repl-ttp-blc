@@ -49,7 +49,7 @@ rm(dfcomplete)
 dat <- dat[,c(1:3,7:8)]
 names(dat)[3] <- 'number_cs'
 
-# remove approach 9 (Yoshiiki)
+# remove approach 9 (Yoshiike)
 dat <- dat %>% 
   filter(approach != 9)
 # change approach numbers so there is no gap anymore
@@ -691,38 +691,4 @@ Sabrina used the criteria from 12 studies in the literature so far. Here the cri
 #   geom_line(aes(group = id))
 ```
 
-#### Case example: potential pitfalls
-
-Here, the baseline correction criteria of one specific study are applied to our dataset. In the original publication the justification for the criteria applied in the baseline correction procedure were not explicitly mentioned to be referred to relate to the stimulus or design specifications in the respective experiment. Here, we adapt these criteria blindly to our study (with different design specifications) and show their effect on the main effect of CS discrimination during acquisition.
-
-#### Relationship with other measures of fear learning (ratings) and trait anxiety
-
-Does the correlation between CS discrimination in SCR and in ratings change depending on quantification method used? Do individuals that show the strongest correlation in one of these approaches, also show the strongest correlation with all other approaches.
-
-Repeat for CS discrimination in SCR and STAI-T values.
-
-## Discussion
-
-Future directions / next steps:
-
--   Zero-responses might per definition be more prevalent during extinction training, therefore differences between baseline correction methods and TTP scoring might be differently reflected within that experimental phase.
-
-# Open questions and notes
-
--   TTP scoring in EDA: the program jumps to the min or max within a selected region, therefore the scoring is not a 100% manual and thus might deviate from completely manual TTP scoring approaches.
-
--   16 baseline corrections are preregistered, but only 10 BC + 2 TTP are included here. Were the other 4 duplicates?
-
--   Sabrina computed reliability estimates on the non log and range transformed data. Why not keeping this consistent with other analyses and also apply to log and range corrected data?
-
--   What is the reason for using Cronbach's alpha and Krippendorf, instead of ICC for example?
-
-    -   Note that Cronbach's alpha can only be computed for 2 "raters" (i.e., approaches) max.
-
--   Note that for our reliability analysis we have 115 \* 42 = 4830 single observations ("subjects") to compare between approaches. Do we need to account for dependency of subject? In other words, trials are within subject.
-
--   Sabrina mentioned she ranked the responses before calculated reliability estimates. But this is done automatically in the reliability functions, correct? Because I don't find this ranking in the provided script. Just to double check.
-
-    -   Is the ranking done within participant and approach. Or is it done over all participants, over all approaches? This could make a difference, right?
-
-    -   Should we deal with NAs in a certain manner? NAs might result in exactly the same value, whereas actual responses might vary more. The ranking should, however, solve this problem.
+#### 
